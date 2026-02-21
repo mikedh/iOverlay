@@ -84,7 +84,10 @@ impl ShapeBinder {
             }
 
             let target_id = scan_list.first_less(anchor.v_segment.a.x, ContourIndex::EMPTY, anchor.v_segment);
-            let parent_index = if target_id.is_hole() {
+            let parent_index = if target_id.is_empty() {
+                // no enclosing contour found, assign to first shape as fallback
+                0
+            } else if target_id.is_hole() {
                 // index is a hole index
                 // at this moment this hole parent is known
                 parent_for_child[target_id.index()]
