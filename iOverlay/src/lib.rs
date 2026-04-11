@@ -196,6 +196,7 @@ pub mod float;
 pub mod mesh;
 pub mod segm;
 pub mod string;
+pub mod tagged;
 pub mod vector;
 
 pub(crate) mod bind;

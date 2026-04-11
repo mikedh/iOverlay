@@ -1,5 +1,5 @@
-mod builder;
-mod builder_join;
+pub mod builder;
+pub(crate) mod builder_join;
 pub mod offset;
-mod section;
-mod uniq_iter;
+pub(crate) mod section;
+pub(crate) mod uniq_iter;

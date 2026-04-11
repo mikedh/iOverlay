@@ -1,20 +1,20 @@
-use crate::mesh::math::Math;
+use crate::core::overlay::Overlay;
 use crate::mesh::outline::builder_join::JoinBuilder;
 use crate::mesh::outline::builder_join::{BevelJoinBuilder, MiterJoinBuilder, RoundJoinBuilder};
 use crate::mesh::outline::section::OffsetSection;
-use crate::mesh::outline::uniq_iter::{UniqueSegment, UniqueSegmentsIter};
+use crate::mesh::outline::uniq_iter::UniqueSegmentsIter;
 use crate::mesh::style::LineJoin;
 use crate::segm::boolean::ShapeCountBoolean;
 use crate::segm::segment::Segment;
+use crate::tagged::TagLookup;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
 use i_float::adapter::FloatPointAdapter;
 use i_float::float::compatible::FloatPointCompatible;
 use i_float::float::number::FloatNumber;
-use i_float::float::vector::FloatPointMath;
 
-trait OutlineBuild<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub(crate) trait OutlineBuild<P: FloatPointCompatible<T>, T: FloatNumber> {
     fn build(
         &self,
         path: &[P],
@@ -22,23 +22,35 @@ trait OutlineBuild<P: FloatPointCompatible<T>, T: FloatNumber> {
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     );
 
+    /// Tagged variant of `build`. Delegates to
+    /// [`crate::tagged::build_outline_tagged`], passing the concrete
+    /// `J: JoinBuilder` the caller picked in `OutlineBuilder::new`.
+    fn build_tagged(
+        &self,
+        path: &[P],
+        tags: &[u32],
+        adapter: &FloatPointAdapter<P, T>,
+        overlay: &mut Overlay,
+        lookup: &mut TagLookup,
+    );
+
     fn capacity(&self, points_count: usize) -> usize;
     fn additional_offset(&self, radius: T) -> T;
 }
 
-pub(super) struct OutlineBuilder<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub struct OutlineBuilder<P: FloatPointCompatible<T>, T: FloatNumber> {
     builder: Box<dyn OutlineBuild<P, T>>,
 }
 
-struct Builder<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> {
-    extend: bool,
-    radius: T,
-    join_builder: J,
-    _phantom: PhantomData<P>,
+pub(crate) struct Builder<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> {
+    pub(crate) extend: bool,
+    pub(crate) radius: T,
+    pub(crate) join_builder: J,
+    pub(crate) _phantom: PhantomData<P>,
 }
 
 impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineBuilder<P, T> {
-    pub(super) fn new(radius: T, join: &LineJoin<T>) -> OutlineBuilder<P, T> {
+    pub fn new(radius: T, join: &LineJoin<T>) -> OutlineBuilder<P, T> {
         let extend = radius > T::from_float(0.0);
         let builder: Box<dyn OutlineBuild<P, T>> = {
             match join {
@@ -67,7 +79,7 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineBuil
     }
 
     #[inline]
-    pub(super) fn build(
+    pub(crate) fn build(
         &self,
         path: &[P],
         adapter: &FloatPointAdapter<P, T>,
@@ -76,13 +88,36 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineBuil
         self.builder.build(path, adapter, segments);
     }
 
+    /// Tagged outline: `tags.len()` must equal `path.len()`. Edge `i`
+    /// — from `path[i]` to `path[(i + 1) % n]` — carries `tags[i]`.
+    /// Offset segments emitted for that edge inherit the same tag;
+    /// round-join arc chords at sharp convex corners carry
+    /// [`crate::tagged::SYNTHESIZED_ROUND_JOIN_TAG`]. Pass the
+    /// resulting `overlay` to a standard run with
+    /// `options.preserve_output_collinear = true`, then annotate each
+    /// output contour via [`TagLookup::annotate_contour`].
+    ///
+    /// All walking / join logic lives in [`crate::tagged`]; this is
+    /// just the dyn-trait entry point.
     #[inline]
-    pub(super) fn capacity(&self, points_count: usize) -> usize {
+    pub fn build_tagged_into(
+        &self,
+        path: &[P],
+        tags: &[u32],
+        adapter: &FloatPointAdapter<P, T>,
+        overlay: &mut Overlay,
+        lookup: &mut TagLookup,
+    ) {
+        self.builder.build_tagged(path, tags, adapter, overlay, lookup);
+    }
+
+    #[inline]
+    pub fn capacity(&self, points_count: usize) -> usize {
         self.builder.capacity(points_count)
     }
 
     #[inline]
-    pub(super) fn additional_offset(&self, radius: T) -> T {
+    pub fn additional_offset(&self, radius: T) -> T {
         self.builder.additional_offset(radius)
     }
 }
@@ -102,6 +137,18 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> OutlineBu
         }
 
         self.build(path, adapter, segments);
+    }
+
+    #[inline]
+    fn build_tagged(
+        &self,
+        path: &[P],
+        tags: &[u32],
+        adapter: &FloatPointAdapter<P, T>,
+        overlay: &mut Overlay,
+        lookup: &mut TagLookup,
+    ) {
+        crate::tagged::build_outline_tagged(self, path, tags, adapter, overlay, lookup);
     }
 
     #[inline]
@@ -171,35 +218,6 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
             // no join
             segments.push_some(s0.b_segment());
             segments.push_some(s1.a_segment());
-        }
-    }
-}
-
-impl<P: FloatPointCompatible<T>, T: FloatNumber> OffsetSection<P, T> {
-    #[inline]
-    fn new(radius: T, s: &UniqueSegment, adapter: &FloatPointAdapter<P, T>) -> Self
-    where
-        P: FloatPointCompatible<T>,
-        T: FloatNumber,
-    {
-        let a = adapter.int_to_float(&s.a);
-        let b = adapter.int_to_float(&s.b);
-        let ab = FloatPointMath::sub(&b, &a);
-        let dir = FloatPointMath::normalize(&ab);
-        let t = Math::ortho_and_scale(&dir, radius);
-
-        let at = FloatPointMath::add(&a, &t);
-        let bt = FloatPointMath::add(&b, &t);
-        let a_top = adapter.float_to_int(&at);
-        let b_top = adapter.float_to_int(&bt);
-
-        Self {
-            a: s.a,
-            b: s.b,
-            a_top,
-            b_top,
-            dir,
-            _phantom: Default::default(),
         }
     }
 }

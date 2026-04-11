@@ -1,9 +1,9 @@
 use core::iter::Chain;
 use i_float::int::point::IntPoint;
 
-pub(super) struct UniqueSegment {
-    pub(super) a: IntPoint,
-    pub(super) b: IntPoint,
+pub(crate) struct UniqueSegment {
+    pub(crate) a: IntPoint,
+    pub(crate) b: IntPoint,
 }
 
 pub(super) struct UniqueSegmentsIter<I>

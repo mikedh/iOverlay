@@ -10,7 +10,7 @@ use i_float::float::compatible::FloatPointCompatible;
 use i_float::float::number::FloatNumber;
 use i_float::float::vector::FloatPointMath;
 
-pub(super) trait JoinBuilder<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub(crate) trait JoinBuilder<P: FloatPointCompatible<T>, T: FloatNumber> {
     fn add_join(
         &self,
         s0: &OffsetSection<P, T>,
@@ -20,6 +20,19 @@ pub(super) trait JoinBuilder<P: FloatPointCompatible<T>, T: FloatNumber> {
     );
     fn capacity(&self) -> usize;
     fn additional_offset(&self, radius: T) -> T;
+
+    /// Will `add_join(s0, s1, ...)` emit a genuine round-arc (vs fall
+    /// through to a bevel)? Used by the tagged outline path to decide
+    /// whether the resulting segments should carry the round-join
+    /// sentinel or the connector's edge tag. Default: `false`.
+    #[inline]
+    fn emits_round_arc(
+        &self,
+        _s0: &OffsetSection<P, T>,
+        _s1: &OffsetSection<P, T>,
+    ) -> bool {
+        false
+    }
 }
 
 pub(super) struct BevelJoinBuilder;
@@ -192,6 +205,17 @@ impl<T: FloatNumber> RoundJoinBuilder<T> {
     }
 }
 impl<T: FloatNumber, P: FloatPointCompatible<T>> JoinBuilder<P, T> for RoundJoinBuilder<T> {
+    #[inline]
+    fn emits_round_arc(
+        &self,
+        s0: &OffsetSection<P, T>,
+        s1: &OffsetSection<P, T>,
+    ) -> bool {
+        // Mirrors the fall-through check in `add_join` below.
+        let dot_product = FloatPointMath::dot_product(&s0.dir, &s1.dir);
+        self.limit_dot_product >= dot_product
+    }
+
     fn add_join(
         &self,
         s0: &OffsetSection<P, T>,
