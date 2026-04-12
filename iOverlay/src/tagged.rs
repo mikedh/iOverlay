@@ -19,8 +19,11 @@
 //!
 //!   * [`LineKey`] — exact, direction-invariant integer identity of
 //!     an infinite line.
-//!   * [`TagLookup`] — `BTreeMap<LineKey, u32>` with first-non-zero
-//!     merge semantics, plus `annotate_contour` / `annotate_shapes`.
+//!   * [`TagLookup`] — type alias for `BTreeMap<LineKey, u32>`.
+//!     Callers insert entries with standard map syntax
+//!     (`lookup.entry(LineKey::from_points(a, b)).or_insert(tag)`)
+//!     and recover per-edge tags via [`annotate_shapes`] /
+//!     [`annotate_contour`].
 //!   * [`SYNTHESIZED_ROUND_JOIN_TAG`] — sentinel for chords emitted
 //!     by `RoundJoinBuilder` at sharp convex corners.
 //!   * [`build_outline_tagged`] — the per-edge walk used by
@@ -108,98 +111,53 @@ fn gcd_u64(mut a: u64, mut b: u64) -> u64 {
     a
 }
 
-/// Map from infinite-line identity to tag, with "first non-zero wins"
-/// merge semantics. Populated by `OutlineBuilder::build_tagged_into`
-/// for the offset path, or hand-populated via [`TagLookup::push_edge`]
-/// for arbitrary tagged boolean operations.
-#[derive(Default, Debug, Clone)]
-pub struct TagLookup {
-    map: BTreeMap<LineKey, u32>,
+/// Map from infinite-line identity to user tag. Populated by
+/// [`build_outline_tagged`] for the offset path, or hand-populated
+/// by arbitrary tagged boolean-op callers via standard `BTreeMap`
+/// entry syntax:
+///
+/// ```ignore
+/// if a != b {
+///     lookup.entry(LineKey::from_points(a, b)).or_insert(tag);
+/// }
+/// ```
+///
+/// Recover per-edge tags with [`annotate_shapes`] /
+/// [`annotate_contour`]. `or_insert` gives first-wins semantics;
+/// callers must skip tag-0 and degenerate edges themselves.
+pub type TagLookup = BTreeMap<LineKey, u32>;
+
+/// Per-edge tag lookup for one closed contour. Edge `i` goes from
+/// `contour[i]` to `contour[(i + 1) % n]`. Missing entries and
+/// degenerate edges resolve to tag `0`.
+pub fn annotate_contour(lookup: &TagLookup, contour: &[IntPoint]) -> Vec<u32> {
+    let n = contour.len();
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let a = contour[i];
+        let b = contour[(i + 1) % n];
+        let tag = if a == b {
+            0
+        } else {
+            lookup.get(&LineKey::from_points(a, b)).copied().unwrap_or(0)
+        };
+        out.push(tag);
+    }
+    out
 }
 
-impl TagLookup {
-    #[inline]
-    pub fn new() -> Self {
-        Self { map: BTreeMap::new() }
-    }
-
-    #[inline]
-    pub fn clear(&mut self) {
-        self.map.clear();
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.map.len()
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
-
-    /// Record a line → tag association. If the line already has a
-    /// non-zero tag, it is kept (first non-zero wins). Used internally
-    /// by [`build_outline_tagged`] and exposed publicly so callers of
-    /// arbitrary tagged boolean ops can seed the map from their own
-    /// subject / clip edges.
-    #[inline]
-    pub fn push_edge(&mut self, a: IntPoint, b: IntPoint, tag: u32) {
-        if a == b {
-            return;
-        }
-        let key = LineKey::from_points(a, b);
-        match self.map.get_mut(&key) {
-            Some(existing) if *existing == 0 => *existing = tag,
-            Some(_) => {}
-            None => {
-                self.map.insert(key, tag);
-            }
-        }
-    }
-
-    /// Look up the tag for one output edge. Returns 0 if the edge's
-    /// line is not in the map.
-    #[inline]
-    pub fn lookup_edge(&self, a: IntPoint, b: IntPoint) -> u32 {
-        if a == b {
-            return 0;
-        }
-        self.map
-            .get(&LineKey::from_points(a, b))
-            .copied()
-            .unwrap_or(0)
-    }
-
-    /// Walk a closed contour and return one tag per edge. Edge `i`
-    /// goes from `contour[i]` to `contour[(i + 1) % n]`.
-    pub fn annotate_contour(&self, contour: &[IntPoint]) -> Vec<u32> {
-        let n = contour.len();
-        let mut out = Vec::with_capacity(n);
-        if n == 0 {
-            return out;
-        }
-        for i in 0..n {
-            let a = contour[i];
-            let b = contour[(i + 1) % n];
-            out.push(self.lookup_edge(a, b));
-        }
-        out
-    }
-
-    /// Annotate every contour of every shape. Shape / contour / edge
-    /// structure of the result mirrors `shapes`.
-    pub fn annotate_shapes(&self, shapes: &IntShapes) -> Vec<Vec<Vec<u32>>> {
-        shapes
-            .iter()
-            .map(|shape| {
-                shape
-                    .iter()
-                    .map(|contour| self.annotate_contour(contour))
-                    .collect()
-            })
-            .collect()
-    }
+/// Annotate every contour of every shape. Shape / contour / edge
+/// structure of the result mirrors `shapes`.
+pub fn annotate_shapes(lookup: &TagLookup, shapes: &IntShapes) -> Vec<Vec<Vec<u32>>> {
+    shapes
+        .iter()
+        .map(|shape| {
+            shape
+                .iter()
+                .map(|contour| annotate_contour(lookup, contour))
+                .collect()
+        })
+        .collect()
 }
 
 // --------------------------------------------------------------------
@@ -260,7 +218,11 @@ pub(crate) fn build_outline_tagged<J, P, T>(
         let cur_tag = tags[i];
 
         if let Some(ts) = sec.top_segment() {
-            lookup.push_edge(sec.a_top, sec.b_top, cur_tag);
+            if cur_tag != 0 && sec.a_top != sec.b_top {
+                lookup
+                    .entry(LineKey::from_points(sec.a_top, sec.b_top))
+                    .or_insert(cur_tag);
+            }
             segments.push(ts);
         }
 
@@ -275,10 +237,10 @@ pub(crate) fn build_outline_tagged<J, P, T>(
         n_emitted += 1;
     }
 
-    if n_emitted >= 2 {
-        if let (Some(p), Some(f)) = (prev, first) {
-            feed_join_tagged(builder, &p, &f, prev_tag, adapter, segments, lookup);
-        }
+    if n_emitted >= 2
+        && let (Some(p), Some(f)) = (prev, first)
+    {
+        feed_join_tagged(builder, &p, &f, prev_tag, adapter, segments, lookup);
     }
 }
 
@@ -331,8 +293,14 @@ fn feed_join_tagged<J, P, T>(
             segments.push(seg);
         }
     }
-    for seg in &segments[start..] {
-        lookup.push_edge(seg.x_segment.a, seg.x_segment.b, tag);
+    if tag != 0 {
+        for seg in &segments[start..] {
+            let a = seg.x_segment.a;
+            let b = seg.x_segment.b;
+            if a != b {
+                lookup.entry(LineKey::from_points(a, b)).or_insert(tag);
+            }
+        }
     }
 }
 
@@ -389,25 +357,34 @@ mod tests {
         assert_eq!(k0.dy, k1.dy);
     }
 
+    fn set(map: &mut TagLookup, a: IntPoint, b: IntPoint, tag: u32) {
+        if tag != 0 && a != b {
+            map.entry(LineKey::from_points(a, b)).or_insert(tag);
+        }
+    }
+
     #[test]
     fn tag_lookup_first_non_zero_wins() {
         let mut map = TagLookup::new();
-        map.push_edge(p(0, 0), p(10, 0), 0);
-        map.push_edge(p(0, 0), p(5, 0), 42);
-        map.push_edge(p(3, 0), p(7, 0), 99);
-        assert_eq!(map.lookup_edge(p(0, 0), p(10, 0)), 42);
+        set(&mut map, p(0, 0), p(10, 0), 0); // filtered at call site
+        set(&mut map, p(0, 0), p(5, 0), 42); // first non-zero wins
+        set(&mut map, p(3, 0), p(7, 0), 99); // same line, preserved
+        assert_eq!(
+            map.get(&LineKey::from_points(p(0, 0), p(10, 0))).copied(),
+            Some(42)
+        );
     }
 
     #[test]
     fn annotate_contour_basic() {
         let mut map = TagLookup::new();
-        map.push_edge(p(0, 0), p(10, 0), 1);
-        map.push_edge(p(10, 0), p(10, 10), 2);
-        map.push_edge(p(10, 10), p(0, 10), 3);
-        map.push_edge(p(0, 10), p(0, 0), 4);
+        set(&mut map, p(0, 0), p(10, 0), 1);
+        set(&mut map, p(10, 0), p(10, 10), 2);
+        set(&mut map, p(10, 10), p(0, 10), 3);
+        set(&mut map, p(0, 10), p(0, 0), 4);
 
         let contour = vec![p(0, 0), p(10, 0), p(10, 10), p(0, 10)];
-        let tags = map.annotate_contour(&contour);
+        let tags = annotate_contour(&map, &contour);
         assert_eq!(tags, vec![1, 2, 3, 4]);
     }
 }

@@ -95,7 +95,7 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineBuil
     /// [`crate::tagged::SYNTHESIZED_ROUND_JOIN_TAG`]. Pass the
     /// resulting `overlay` to a standard run with
     /// `options.preserve_output_collinear = true`, then annotate each
-    /// output contour via [`TagLookup::annotate_contour`].
+    /// output contour via [`crate::tagged::annotate_contour`].
     ///
     /// All walking / join logic lives in [`crate::tagged`]; this is
     /// just the dyn-trait entry point.

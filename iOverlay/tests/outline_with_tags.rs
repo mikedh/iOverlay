@@ -2,7 +2,7 @@
 //!
 //! Drives `OutlineBuilder::build_tagged_into` into a stock
 //! `Overlay` with `preserve_output_collinear = true`, then uses
-//! `TagLookup::annotate_contour` to recover per-edge tags on the
+//! `tagged::annotate_contour` to recover per-edge tags on the
 //! extracted shapes. Asserts:
 //!
 //!   1. Every user-supplied tag survives end-to-end through the
@@ -32,7 +32,7 @@ use i_overlay::core::overlay_rule::OverlayRule;
 use i_overlay::mesh::outline::builder::OutlineBuilder;
 use i_overlay::mesh::outline::offset::OutlineOffset;
 use i_overlay::mesh::style::{LineJoin, OutlineStyle};
-use i_overlay::tagged::{SYNTHESIZED_ROUND_JOIN_TAG, TagLookup};
+use i_overlay::tagged::{annotate_contour, SYNTHESIZED_ROUND_JOIN_TAG, TagLookup};
 
 #[test]
 fn outline_with_tags_preserves_input_and_marks_round_joins() {
@@ -113,7 +113,7 @@ fn outline_with_tags_preserves_input_and_marks_round_joins() {
     );
 
     // Recover per-edge tags post-hoc.
-    let edge_tags = lookup.annotate_contour(&shapes[0][0]);
+    let edge_tags = annotate_contour(&lookup, &shapes[0][0]);
 
     // Compress the tag stream into maximal runs for later
     // inspection in assertion messages. The assertion at the
@@ -234,3 +234,4 @@ fn polygon_area(points: &[[f64; 2]]) -> f64 {
     }
     (area * 0.5).abs()
 }
+
