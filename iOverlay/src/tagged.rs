@@ -34,7 +34,7 @@ use crate::core::overlay::Overlay;
 use crate::mesh::outline::builder::Builder;
 use crate::mesh::outline::builder_join::JoinBuilder;
 use crate::mesh::outline::section::OffsetSection;
-use crate::mesh::outline::uniq_iter::UniqueSegment;
+use crate::mesh::outline::uniq_iter::{UniqueSegment, UniqueSegmentsIter};
 use crate::segm::boolean::ShapeCountBoolean;
 use crate::segm::segment::Segment;
 use alloc::collections::BTreeMap;
@@ -195,53 +195,68 @@ pub(crate) fn build_outline_tagged<J, P, T>(
         return;
     }
 
-    let segments = &mut overlay.segments;
-    segments.reserve(builder.join_builder.capacity() * n);
-
-    let mut first: Option<OffsetSection<P, T>> = None;
-    let mut prev: Option<OffsetSection<P, T>> = None;
-    let mut prev_tag: u32 = 0;
-    let mut n_emitted: usize = 0;
-
+    // Populate TagLookup (offset line identity → tag) and point→tag
+    // map (for join connector tags) from all input edges.
+    let mut point_tag: BTreeMap<IntPoint, u32> = BTreeMap::new();
     for i in 0..n {
         let a_int = adapter.float_to_int(&path[i]);
         let b_int = adapter.float_to_int(&path[(i + 1) % n]);
         if a_int == b_int {
             continue;
         }
-
-        let sec = OffsetSection::new(
-            builder.radius,
-            &UniqueSegment { a: a_int, b: b_int },
-            adapter,
-        );
-        let cur_tag = tags[i];
-
-        if let Some(ts) = sec.top_segment() {
-            if cur_tag != 0 && sec.a_top != sec.b_top {
+        let tag = tags[i];
+        if tag != 0 {
+            let sec = OffsetSection::new(
+                builder.radius,
+                &UniqueSegment { a: a_int, b: b_int },
+                adapter,
+            );
+            if sec.a_top != sec.b_top {
                 lookup
                     .entry(LineKey::from_points(sec.a_top, sec.b_top))
-                    .or_insert(cur_tag);
+                    .or_insert(tag);
             }
+            point_tag.entry(a_int).or_insert(tag);
+        }
+    }
+
+    // Build overlay geometry via UniqueSegmentsIter (same as `Builder::build`).
+    let iter = path.iter().map(|p| adapter.float_to_int(p));
+    let Some(mut uniq_iter) = UniqueSegmentsIter::new(iter) else {
+        return;
+    };
+
+    let us0 = match uniq_iter.next() {
+        Some(us) => us,
+        None => return,
+    };
+
+    let segments = &mut overlay.segments;
+    segments.reserve(builder.join_builder.capacity() * n);
+
+    let s0 = OffsetSection::new(builder.radius, &us0, adapter);
+    let mut sk = s0.clone();
+    let mut prev_tag = point_tag.get(&us0.a).copied().unwrap_or(0);
+
+    if let Some(ts) = sk.top_segment() {
+        segments.push(ts);
+    }
+
+    for usi in uniq_iter {
+        let si = OffsetSection::new(builder.radius, &usi, adapter);
+        let cur_tag = point_tag.get(&usi.a).copied().unwrap_or(0);
+
+        if let Some(ts) = si.top_segment() {
             segments.push(ts);
         }
 
-        if let Some(ref p) = prev {
-            feed_join_tagged(builder, p, &sec, prev_tag, adapter, segments, lookup);
-        } else {
-            first = Some(sec.clone());
-        }
-
-        prev = Some(sec);
+        feed_join_tagged(builder, &sk, &si, prev_tag, adapter, segments, lookup);
+        sk = si;
         prev_tag = cur_tag;
-        n_emitted += 1;
     }
 
-    if n_emitted >= 2
-        && let (Some(p), Some(f)) = (prev, first)
-    {
-        feed_join_tagged(builder, &p, &f, prev_tag, adapter, segments, lookup);
-    }
+    // Close the ring.
+    feed_join_tagged(builder, &sk, &s0, prev_tag, adapter, segments, lookup);
 }
 
 /// Tagged counterpart of `Builder::feed_join`. Silently returns on

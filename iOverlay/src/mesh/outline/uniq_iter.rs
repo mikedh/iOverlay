@@ -6,7 +6,7 @@ pub(crate) struct UniqueSegment {
     pub(crate) b: IntPoint,
 }
 
-pub(super) struct UniqueSegmentsIter<I>
+pub(crate) struct UniqueSegmentsIter<I>
 where
     I: Iterator<Item = IntPoint>,
 {
@@ -20,7 +20,7 @@ where
     I: Iterator<Item = IntPoint>,
 {
     #[inline]
-    pub(super) fn new(iter: I) -> Option<Self> {
+    pub(crate) fn new(iter: I) -> Option<Self> {
         let mut iter = iter;
 
         let mut p0 = iter.next()?;
