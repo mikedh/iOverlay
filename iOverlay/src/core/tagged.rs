@@ -23,8 +23,8 @@ mod tests {
         }, Default::default());
         // Two adjacent rectangles, tags 1 and 2.
         for (rect, tag) in [
-            ([IntPoint::new(0,0), IntPoint::new(50,0), IntPoint::new(50,100), IntPoint::new(0,100)], 1u32),
-            ([IntPoint::new(50,0), IntPoint::new(100,0), IntPoint::new(100,100), IntPoint::new(50,100)], 2u32),
+            ([IntPoint::new(0,0), IntPoint::new(50,0), IntPoint::new(50,100), IntPoint::new(0,100)], 1u16),
+            ([IntPoint::new(50,0), IntPoint::new(100,0), IntPoint::new(100,100), IntPoint::new(50,100)], 2u16),
         ] {
             for i in 0..4 {
                 let a = rect[i];

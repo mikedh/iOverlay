@@ -25,7 +25,7 @@ trait OutlineBuild<P: FloatPointCompatible<T>, T: FloatNumber> {
     fn build_and_tag(
         &self,
         path: &[P],
-        tags: &[u32],
+        tags: &[u16],
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     );
@@ -89,7 +89,7 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineBuil
     pub fn build_and_tag(
         &self,
         path: &[P],
-        tags: &[u32],
+        tags: &[u16],
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
@@ -127,7 +127,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> OutlineBu
     fn build_and_tag(
         &self,
         path: &[P],
-        tags: &[u32],
+        tags: &[u16],
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
@@ -188,7 +188,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
     fn build_and_tag(
         &self,
         path: &[P],
-        tags: &[u32],
+        tags: &[u16],
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
@@ -228,7 +228,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
             for seg in &mut segments[mark..] { seg.tag = cur_tag; }
 
             // Join: same tag → edge tag, different → JOIN sentinel
-            let jt = if prev_tag == cur_tag { prev_tag } else { u32::MAX };
+            let jt = if prev_tag == cur_tag { prev_tag } else { u16::MAX };
             let mark = segments.len();
             self.feed_join(&sk, &si, adapter, segments);
             for seg in &mut segments[mark..] { seg.tag = jt; }
@@ -239,7 +239,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
 
         // Closing join
         let first_tag = tags[us0.edge_index % n];
-        let jt = if prev_tag == first_tag { prev_tag } else { u32::MAX };
+        let jt = if prev_tag == first_tag { prev_tag } else { u16::MAX };
         let mark = segments.len();
         self.feed_join(&sk, &s0, adapter, segments);
         for seg in &mut segments[mark..] { seg.tag = jt; }

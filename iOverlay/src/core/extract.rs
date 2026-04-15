@@ -30,7 +30,7 @@ pub(crate) enum VisitState {
 #[derive(Default)]
 pub struct BooleanExtractionBuffer {
     pub(crate) points: Vec<IntPoint>,
-    pub(crate) tags: Vec<u32>,
+    pub(crate) tags: Vec<u16>,
     pub(crate) visited: Vec<VisitState>,
     pub(crate) contour_visited: Option<Vec<VisitState>>,
 }
@@ -47,14 +47,19 @@ impl OverlayGraph<'_> {
     /// - Each path `Vec<IntPoint>` is a sequence of points, forming a closed path.
     ///
     /// Note: Outer boundary paths have a counterclockwise order, and holes have a clockwise order.
-    /// Extract shapes (points only, tags discarded).
     #[inline]
     pub fn extract_shapes(
         &self,
         overlay_rule: OverlayRule,
         buffer: &mut BooleanExtractionBuffer,
     ) -> IntShapes {
-        self.extract_shapes_with_tags(overlay_rule, buffer).0
+        self.links
+            .filter_by_overlay_into(overlay_rule, &mut buffer.visited);
+        if self.options.ogc {
+            self.extract_ogc(overlay_rule, buffer)
+        } else {
+            self.extract_no_tags(overlay_rule, buffer)
+        }
     }
 
     /// Extract shapes with per-edge tags emitted inline during graph
@@ -65,12 +70,11 @@ impl OverlayGraph<'_> {
         &self,
         overlay_rule: OverlayRule,
         buffer: &mut BooleanExtractionBuffer,
-    ) -> (IntShapes, Vec<Vec<Vec<u32>>>) {
+    ) -> (IntShapes, Vec<Vec<Vec<u16>>>) {
         self.links
             .filter_by_overlay_into(overlay_rule, &mut buffer.visited);
-        // TODO: extract_ogc path doesn't emit tags yet.
         debug_assert!(!self.options.ogc, "OGC extraction doesn't support inline tags yet");
-        self.extract(overlay_rule, buffer)
+        self.extract_with_tags(overlay_rule, buffer)
     }
 
     /// Extracts the flat contours from the overlay graph based on the specified overlay rule.
@@ -96,17 +100,109 @@ impl OverlayGraph<'_> {
         self.extract_contours(overlay_rule, buffer, output);
     }
 
-    pub(crate) fn extract(
+    /// Fast extraction path — no tag collection, no tag allocation.
+    fn extract_no_tags(
         &self,
         overlay_rule: OverlayRule,
         buffer: &mut BooleanExtractionBuffer,
-    ) -> (IntShapes, Vec<Vec<Vec<u32>>>) {
+    ) -> IntShapes {
         let clockwise = self.options.output_direction == ContourDirection::Clockwise;
 
         let mut shapes = Vec::new();
-        let mut shape_tags: Vec<Vec<Vec<u32>>> = Vec::new();
         let mut holes = Vec::new();
-        let mut hole_tags: Vec<Vec<u32>> = Vec::new();
+        let mut anchors = Vec::new();
+
+        buffer.points.reserve_capacity(buffer.visited.len());
+
+        let mut link_index = 0;
+        let mut anchors_already_sorted = true;
+        while link_index < buffer.visited.len() {
+            if buffer.visited.is_visited(link_index) {
+                link_index += 1;
+                continue;
+            }
+
+            let left_top_link = unsafe {
+                GraphUtil::find_left_top_link(self.links, self.nodes, link_index, &buffer.visited)
+            };
+
+            let link = unsafe {
+                self.links.get_unchecked(left_top_link)
+            };
+            let is_hole = overlay_rule.is_fill_top(link.fill);
+            let visited_state = [VisitState::HullVisited, VisitState::HoleVisited][is_hole as usize];
+
+            let direction = is_hole == clockwise;
+            let start_data = StartPathData::new(direction, link, left_top_link);
+
+            self.find_contour_no_tags(
+                &start_data,
+                direction,
+                visited_state,
+                &mut buffer.visited,
+                &mut buffer.points,
+            );
+            let (is_valid, is_modified) = buffer.points.validate(
+                self.options.min_output_area,
+                self.options.preserve_output_collinear,
+            );
+
+            if !is_valid {
+                link_index += 1;
+                continue;
+            }
+
+            let contour = buffer.points.as_slice().to_vec();
+
+            if is_hole {
+                let mut v_segment = if clockwise {
+                    VSegment {
+                        a: contour[1],
+                        b: contour[2],
+                    }
+                } else {
+                    VSegment {
+                        a: contour[0],
+                        b: contour[contour.len() - 1],
+                    }
+                };
+                if is_modified {
+                    let most_left = contour.left_bottom_segment();
+                    if most_left != v_segment {
+                        v_segment = most_left;
+                        anchors_already_sorted = false;
+                    }
+                };
+
+                debug_assert_eq!(v_segment, contour.left_bottom_segment());
+                let id_data = ContourIndex::new_hole(holes.len());
+                anchors.push(IdSegment::with_segment(id_data, v_segment));
+                holes.push(contour);
+            } else {
+                shapes.push(vec![contour]);
+            }
+        }
+
+        if !anchors_already_sorted {
+            anchors.sort_unstable_by(|s0, s1| s0.v_segment.a.cmp(&s1.v_segment.a));
+        }
+
+        shapes.join_sorted_holes(holes, anchors, clockwise);
+
+        shapes
+    }
+
+    pub(crate) fn extract_with_tags(
+        &self,
+        overlay_rule: OverlayRule,
+        buffer: &mut BooleanExtractionBuffer,
+    ) -> (IntShapes, Vec<Vec<Vec<u16>>>) {
+        let clockwise = self.options.output_direction == ContourDirection::Clockwise;
+
+        let mut shapes = Vec::new();
+        let mut shape_tags: Vec<Vec<Vec<u16>>> = Vec::new();
+        let mut holes = Vec::new();
+        let mut hole_tags: Vec<Vec<u16>> = Vec::new();
         let mut anchors = Vec::new();
 
         buffer.points.reserve_capacity(buffer.visited.len());
@@ -225,7 +321,7 @@ impl OverlayGraph<'_> {
         visited_state: VisitState,
         visited: &mut [VisitState],
         points: &mut Vec<IntPoint>,
-        tags: &mut Vec<u32>,
+        tags: &mut Vec<u16>,
     ) {
         let mut link_id = start_data.link_id;
         let mut node_id = start_data.node_id;
@@ -242,12 +338,39 @@ impl OverlayGraph<'_> {
             link_id = GraphUtil::next_link(self.links, self.nodes, link_id, node_id, clockwise, visited);
 
             let link = unsafe {
-                // Safety: `link_id` is always derived from a previous in-bounds index or
-                // from `find_left_top_link`, so it remains in `0..self.links.len()`.
                 self.links.get_unchecked(link_id)
             };
             node_id = points.push_node_and_get_other(link, node_id);
             tags.push(link.tag);
+
+            visited.visit_edge(link_id, visited_state);
+        }
+    }
+
+    /// Fast contour traversal — points only, no tag collection.
+    pub(crate) fn find_contour_no_tags(
+        &self,
+        start_data: &StartPathData,
+        clockwise: bool,
+        visited_state: VisitState,
+        visited: &mut [VisitState],
+        points: &mut Vec<IntPoint>,
+    ) {
+        let mut link_id = start_data.link_id;
+        let mut node_id = start_data.node_id;
+        let last_node_id = start_data.last_node_id;
+
+        visited.visit_edge(link_id, visited_state);
+        points.clear();
+        points.push(start_data.begin);
+
+        while node_id != last_node_id {
+            link_id = GraphUtil::next_link(self.links, self.nodes, link_id, node_id, clockwise, visited);
+
+            let link = unsafe {
+                self.links.get_unchecked(link_id)
+            };
+            node_id = points.push_node_and_get_other(link, node_id);
 
             visited.visit_edge(link_id, visited_state);
         }
@@ -272,13 +395,10 @@ impl OverlayGraph<'_> {
             }
 
             let left_top_link = unsafe {
-                // Safety: `link_index` walks 0..buffer.visited.len(), and buffer.visited.len() <= self.links.len().
                 GraphUtil::find_left_top_link(self.links, self.nodes, link_index, &buffer.visited)
             };
 
             let link = unsafe {
-                // Safety: `left_top_link` originates from `find_left_top_link`, which only returns
-                // indices in 0..self.links.len(), so this lookup cannot go out of bounds.
                 self.links.get_unchecked(left_top_link)
             };
             let is_hole = overlay_rule.is_fill_top(link.fill);
@@ -287,13 +407,12 @@ impl OverlayGraph<'_> {
             let direction = is_hole == clockwise;
             let start_data = StartPathData::new(direction, link, left_top_link);
 
-            self.find_contour(
+            self.find_contour_no_tags(
                 &start_data,
                 direction,
                 visited_state,
                 &mut buffer.visited,
                 &mut buffer.points,
-                &mut buffer.tags,
             );
             let (is_valid, _) = buffer.points.validate(
                 self.options.min_output_area,
@@ -315,7 +434,7 @@ pub(crate) struct StartPathData {
     pub(crate) node_id: usize,
     pub(crate) link_id: usize,
     pub(crate) last_node_id: usize,
-    pub(crate) start_tag: u32,
+    pub(crate) start_tag: u16,
 }
 
 impl StartPathData {

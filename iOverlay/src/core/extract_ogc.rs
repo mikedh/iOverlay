@@ -122,13 +122,12 @@ impl OverlayGraph<'_> {
 
                 let start_data = StartPathData::new(is_main_dir_cw, link, left_top_link);
 
-                self.find_contour(
+                self.find_contour_no_tags(
                     &start_data,
                     is_main_dir_cw,
                     VisitState::HullVisited,
                     &mut buffer.visited,
                     &mut buffer.points,
-                    &mut buffer.tags,
                 );
 
                 let (is_valid, is_modified) = buffer.points.validate(
@@ -266,14 +265,12 @@ impl OverlayGraph<'_> {
         // all links escape current contour are skipped in `contour_visited`.
 
         points.reserve_capacity(original_contour_len);
-        let mut ogc_tags = Vec::new();
-        self.find_contour(
+        self.find_contour_no_tags(
             start_data,
             !clockwise,
             VisitState::HullVisited,
             contour_visited,
             points,
-            &mut ogc_tags,
         );
 
         let (is_valid, _) = points.validate(
@@ -315,14 +312,12 @@ impl OverlayGraph<'_> {
                 // Self-touch splits can only produce holes inside this contour.
 
                 let hole_start_data = StartPathData::new(clockwise, link, left_top_link);
-                let mut hole_tags = Vec::new();
-                self.find_contour(
+                self.find_contour_no_tags(
                     &hole_start_data,
                     clockwise,
                     VisitState::HoleVisited,
                     contour_visited,
                     points,
-                    &mut hole_tags,
                 );
 
                 // Hole have to belong to this shape.

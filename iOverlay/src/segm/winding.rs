@@ -1,6 +1,6 @@
 use crate::core::overlay::ShapeType;
 
-pub(crate) trait WindingCount
+pub trait WindingCount
 where
     Self: Clone + Copy + Send + Sync,
 {

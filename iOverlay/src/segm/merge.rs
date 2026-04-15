@@ -35,6 +35,13 @@ fn merge<C: WindingCount>(segments: &mut [Segment<C>], after: usize) -> usize {
     while i < segments.len() {
         if prev.x_segment.eq(&segments[i].x_segment) {
             prev.count.apply(segments[i].count);
+            // Prefer non-zero tag: tagged edges carry surface metadata
+            // that untagged duplicates don't. Without this, the merge
+            // order (determined by sort stability) silently discards
+            // cylinder-wall tags when cap-face edges sort first.
+            if prev.tag == 0 {
+                prev.tag = segments[i].tag;
+            }
         } else {
             if prev.count.is_not_empty() {
                 segments[j] = prev;

@@ -25,17 +25,18 @@ pub struct Segment<C> {
     pub(crate) count: C,
     /// User-supplied edge tag. Survives sort, split, and merge — both
     /// halves of a split segment inherit the parent's tag. Default 0.
-    pub tag: u32,
+    pub tag: u16,
 }
 
 impl<C: WindingCount> Segment<C> {
     #[inline(always)]
+    #[allow(dead_code)]
     pub(crate) fn create_and_validate(a: IntPoint, b: IntPoint, count: C) -> Self {
         Self::create_and_validate_tagged(a, b, count, 0)
     }
 
     #[inline(always)]
-    pub fn create_and_validate_tagged(a: IntPoint, b: IntPoint, count: C, tag: u32) -> Self {
+    pub fn create_and_validate_tagged(a: IntPoint, b: IntPoint, count: C, tag: u16) -> Self {
         if a < b {
             Self {
                 x_segment: XSegment { a, b },
