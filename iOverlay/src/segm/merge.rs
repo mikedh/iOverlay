@@ -82,7 +82,7 @@ mod tests {
         let a = IntPoint::new(1, 2);
         let b = IntPoint::new(3, 4);
         let count = ShapeCountBoolean::new(1, 1);
-        let segment = Segment::create_and_validate(a, b, count);
+        let segment = Segment::create_and_validate_tagged(a, b, count, 0);
         let mut segments = vec![segment];
         segments.merge_if_needed();
         assert_eq!(segments.len(), 1, "Single segment should remain unchanged");
@@ -94,12 +94,12 @@ mod tests {
         let a1 = IntPoint::new(1, 2);
         let b1 = IntPoint::new(3, 4);
         let count1 = ShapeCountBoolean::new(1, 0);
-        let segment1 = Segment::create_and_validate(a1, b1, count1);
+        let segment1 = Segment::create_and_validate_tagged(a1, b1, count1, 0);
 
         let a2 = IntPoint::new(5, 6);
         let b2 = IntPoint::new(7, 8);
         let count2 = ShapeCountBoolean::new(0, 1);
-        let segment2 = Segment::create_and_validate(a2, b2, count2);
+        let segment2 = Segment::create_and_validate_tagged(a2, b2, count2, 0);
 
         let mut segments = vec![segment1, segment2];
         segments.merge_if_needed();
@@ -118,19 +118,19 @@ mod tests {
         let a1 = IntPoint::new(1, 2);
         let b1 = IntPoint::new(3, 4);
         let count1 = ShapeCountBoolean::new(1, 0);
-        let segment1 = Segment::create_and_validate(a1, b1, count1);
+        let segment1 = Segment::create_and_validate_tagged(a1, b1, count1, 0);
 
         let a2 = IntPoint::new(1, 2);
         let b2 = IntPoint::new(3, 4);
         let count2 = ShapeCountBoolean::new(0, 1);
-        let segment2 = Segment::create_and_validate(a2, b2, count2);
+        let segment2 = Segment::create_and_validate_tagged(a2, b2, count2, 0);
 
         let mut segments = vec![segment1, segment2];
         segments.merge_if_needed();
 
         assert_eq!(segments.len(), 1, "Segments should be merged into one");
         let merged_count = ShapeCountBoolean::new(1, 1);
-        let expected_segment = Segment::create_and_validate(a1, b1, merged_count);
+        let expected_segment = Segment::create_and_validate_tagged(a1, b1, merged_count, 0);
         assert_eq!(
             segments[0], expected_segment,
             "Merged segment should have combined counts"
@@ -146,16 +146,16 @@ mod tests {
         let count2 = ShapeCountBoolean::new(0, 1);
         let count3 = ShapeCountBoolean::new(2, 2);
 
-        let segment1 = Segment::create_and_validate(a, b, count1);
-        let segment2 = Segment::create_and_validate(a, b, count2);
-        let segment3 = Segment::create_and_validate(a, b, count3);
+        let segment1 = Segment::create_and_validate_tagged(a, b, count1, 0);
+        let segment2 = Segment::create_and_validate_tagged(a, b, count2, 0);
+        let segment3 = Segment::create_and_validate_tagged(a, b, count3, 0);
 
         let mut segments = vec![segment1, segment2, segment3];
         segments.merge_if_needed();
 
         assert_eq!(segments.len(), 1, "All segments should be merged into one");
         let merged_count = ShapeCountBoolean::new(3, 3);
-        let expected_segment = Segment::create_and_validate(a, b, merged_count);
+        let expected_segment = Segment::create_and_validate_tagged(a, b, merged_count, 0);
         assert_eq!(
             segments[0], expected_segment,
             "Merged segment should have combined counts"
@@ -168,12 +168,12 @@ mod tests {
         let b1 = IntPoint::new(1, 2);
         let count1 = ShapeCountBoolean::new(1, 0);
         // create_and_validate should order the points
-        let segment1 = Segment::create_and_validate(a1, b1, count1);
+        let segment1 = Segment::create_and_validate_tagged(a1, b1, count1, 0);
 
         let a2 = IntPoint::new(1, 2);
         let b2 = IntPoint::new(3, 4);
         let count2 = ShapeCountBoolean::new(0, 1);
-        let segment2 = Segment::create_and_validate(a2, b2, count2);
+        let segment2 = Segment::create_and_validate_tagged(a2, b2, count2, 0);
 
         let mut segments = vec![segment1, segment2];
         segments.merge_if_needed();
@@ -187,7 +187,7 @@ mod tests {
 
         let merged_count = ShapeCountBoolean::new(1, 1);
         let expected_segment =
-            Segment::create_and_validate(IntPoint::new(1, 2), IntPoint::new(3, 4), merged_count);
+            Segment::create_and_validate_tagged(IntPoint::new(1, 2), IntPoint::new(3, 4), merged_count, 0);
         assert_eq!(
             segments[0], expected_segment,
             "Merged segment should have combined counts and ordered points"
@@ -199,17 +199,17 @@ mod tests {
         let a1 = IntPoint::new(1, 1);
         let b1 = IntPoint::new(2, 2);
         let count1 = ShapeCountBoolean::new(1, 1);
-        let segment1 = Segment::create_and_validate(a1, b1, count1);
+        let segment1 = Segment::create_and_validate_tagged(a1, b1, count1, 0);
 
         let a2 = IntPoint::new(3, 3);
         let b2 = IntPoint::new(4, 4);
         let count2 = ShapeCountBoolean::new(2, 2);
-        let segment2 = Segment::create_and_validate(a2, b2, count2);
+        let segment2 = Segment::create_and_validate_tagged(a2, b2, count2, 0);
 
         let a3 = IntPoint::new(5, 5);
         let b3 = IntPoint::new(6, 6);
         let count3 = ShapeCountBoolean::new(3, 3);
-        let segment3 = Segment::create_and_validate(a3, b3, count3);
+        let segment3 = Segment::create_and_validate_tagged(a3, b3, count3, 0);
 
         let mut segments = vec![segment1, segment2, segment3];
         segments.merge_if_needed();

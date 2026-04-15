@@ -3,9 +3,9 @@ use core::cmp::Ordering;
 use i_float::int::point::IntPoint;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct XSegment {
-    pub a: IntPoint,
-    pub b: IntPoint,
+pub(crate) struct XSegment {
+    pub(crate) a: IntPoint,
+    pub(crate) b: IntPoint,
 }
 
 impl XSegment {
