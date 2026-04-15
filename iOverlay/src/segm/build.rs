@@ -126,11 +126,13 @@ impl<C: Send> Segment<C> {
             Self {
                 x_segment: XSegment { a: p0, b: p1 },
                 count: direct,
+                tag: 0,
             }
         } else {
             Self {
                 x_segment: XSegment { a: p1, b: p0 },
                 count: invert,
+                tag: 0,
             }
         }
     }

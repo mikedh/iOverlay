@@ -16,7 +16,7 @@ use alloc::vec::Vec;
 pub struct OverlayGraph<'a> {
     pub(crate) options: IntOverlayOptions,
     pub(crate) nodes: &'a [OverlayNode],
-    pub(crate) links: &'a [OverlayLink],
+    pub links: &'a [OverlayLink],
 }
 
 #[derive(Debug)]

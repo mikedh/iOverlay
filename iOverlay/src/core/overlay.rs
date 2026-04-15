@@ -65,7 +65,7 @@ pub struct Overlay {
     pub solver: Solver,
     pub options: IntOverlayOptions,
     pub boolean_buffer: Option<BooleanExtractionBuffer>,
-    pub(crate) segments: Vec<Segment<ShapeCountBoolean>>,
+    pub segments: Vec<Segment<ShapeCountBoolean>>,
     pub(crate) split_solver: SplitSolver,
     pub(crate) graph_builder: GraphBuilder<ShapeCountBoolean, OverlayNode>,
 }

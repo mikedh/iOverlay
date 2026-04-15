@@ -83,10 +83,11 @@ impl<C: WindingCount, N: GraphNode> GraphBuilder<C, N> {
             if !F::is_included(fill) {
                 continue;
             }
-            self.links.push(OverlayLink::new(
+            self.links.push(OverlayLink::new_tagged(
                 IdPoint::new(0, segment.x_segment.a),
                 IdPoint::new(0, segment.x_segment.b),
                 fill,
+                segment.tag,
             ));
         }
     }
@@ -97,10 +98,11 @@ impl<C: WindingCount, N: GraphNode> GraphBuilder<C, N> {
         self.links.reserve_capacity(segments.len());
 
         for (segment, &fill) in segments.iter().zip(&self.fills) {
-            self.links.push(OverlayLink::new(
+            self.links.push(OverlayLink::new_tagged(
                 IdPoint::new(0, segment.x_segment.a),
                 IdPoint::new(0, segment.x_segment.b),
                 fill,
+                segment.tag,
             ));
         }
     }

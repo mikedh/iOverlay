@@ -1,9 +1,9 @@
 use i_float::int::point::IntPoint;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) struct IdPoint {
-    pub(crate) id: usize,
-    pub(crate) point: IntPoint,
+pub struct IdPoint {
+    pub id: usize,
+    pub point: IntPoint,
 }
 
 impl IdPoint {

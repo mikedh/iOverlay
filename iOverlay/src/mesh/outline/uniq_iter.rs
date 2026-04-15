@@ -4,70 +4,81 @@ use i_float::int::point::IntPoint;
 pub(super) struct UniqueSegment {
     pub(super) a: IntPoint,
     pub(super) b: IntPoint,
+    /// Index of the input edge that starts this unique segment.
+    pub(super) edge_index: usize,
 }
 
 pub(super) struct UniqueSegmentsIter<I>
 where
-    I: Iterator<Item = IntPoint>,
+    I: Iterator<Item = (IntPoint, usize)>,
 {
-    iter: Chain<I, core::array::IntoIter<IntPoint, 2>>,
+    iter: Chain<I, core::array::IntoIter<(IntPoint, usize), 2>>,
     p0: IntPoint,
+    i0: usize,
     p1: IntPoint,
+    i1: usize,
 }
 
 impl<I> UniqueSegmentsIter<I>
 where
-    I: Iterator<Item = IntPoint>,
+    I: Iterator<Item = (IntPoint, usize)>,
 {
     #[inline]
     pub(super) fn new(iter: I) -> Option<Self> {
         let mut iter = iter;
 
-        let mut p0 = iter.next()?;
-        let mut p1 = iter.find(|p| p0.ne(p))?;
+        let (mut p0, mut i0) = iter.next()?;
+        let (mut p1, mut i1) = iter.find(|(p, _)| p0.ne(p))?;
 
-        let q0 = p0;
+        let (q0, qi0) = (p0, i0);
 
-        for p2 in &mut iter {
+        for (p2, idx2) in &mut iter {
             if include_point(p0, p1, p2) {
                 p0 = p1;
+                i0 = i1;
                 p1 = p2;
+                i1 = idx2;
                 break;
             }
             p1 = p2;
+            i1 = idx2;
         }
 
-        let q1 = p0;
+        let (q1, qi1) = (p0, i0);
 
-        let chain_iter = iter.chain([q0, q1]);
+        let chain_iter = iter.chain([(q0, qi0), (q1, qi1)]);
 
         Some(Self {
             iter: chain_iter,
-            p0,
-            p1,
+            p0, i0,
+            p1, i1,
         })
     }
 }
 
 impl<I> Iterator for UniqueSegmentsIter<I>
 where
-    I: Iterator<Item = IntPoint>,
+    I: Iterator<Item = (IntPoint, usize)>,
 {
     type Item = UniqueSegment;
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        for p2 in &mut self.iter {
+        for (p2, idx2) in &mut self.iter {
             if !include_point(self.p0, self.p1, p2) {
                 self.p1 = p2;
+                self.i1 = idx2;
                 continue;
             }
             let s = UniqueSegment {
                 a: self.p0,
                 b: self.p1,
+                edge_index: self.i0,
             };
 
             self.p0 = self.p1;
+            self.i0 = self.i1;
             self.p1 = p2;
+            self.i1 = idx2;
 
             return Some(s);
         }
@@ -77,6 +88,7 @@ where
             let s = UniqueSegment {
                 a: self.p0,
                 b: self.p1,
+                edge_index: self.i0,
             };
             self.p1 = self.p0;
             Some(s)
@@ -106,23 +118,27 @@ mod tests {
     use i_float::int::point::IntPoint;
     use i_shape::int_path;
 
+    fn indexed(path: &[IntPoint]) -> impl Iterator<Item = (IntPoint, usize)> + '_ {
+        path.iter().copied().enumerate().map(|(i, p)| (p, i))
+    }
+
     #[test]
     fn test_empty() {
-        let uniq_iter = UniqueSegmentsIter::new(core::iter::empty::<IntPoint>());
+        let uniq_iter = UniqueSegmentsIter::new(core::iter::empty::<(IntPoint, usize)>());
         assert!(uniq_iter.is_none());
     }
 
     #[test]
     fn test_single_point() {
         let path = int_path![[0, 0]];
-        let uniq_iter = UniqueSegmentsIter::new(path.iter().copied());
+        let uniq_iter = UniqueSegmentsIter::new(indexed(&path));
         assert!(uniq_iter.is_none());
     }
 
     #[test]
     fn test_all_points_equal() {
         let path = int_path![[0, 0], [0, 0], [0, 0]];
-        let uniq_iter = UniqueSegmentsIter::new(path.iter().copied());
+        let uniq_iter = UniqueSegmentsIter::new(indexed(&path));
         assert!(uniq_iter.is_none());
     }
 
@@ -173,8 +189,14 @@ mod tests {
         assert!(!path.is_empty(), "path must not be empty");
 
         for shift in 0..path.len() {
+            let n = path.len();
             let uniq_iter =
-                UniqueSegmentsIter::new(path[shift..].iter().chain(path[..shift].iter()).copied()).unwrap();
+                UniqueSegmentsIter::new(
+                    path[shift..].iter().chain(path[..shift].iter())
+                        .copied()
+                        .enumerate()
+                        .map(|(i, p)| (p, (i + shift) % n))
+                ).unwrap();
 
             let segments: Vec<_> = uniq_iter.collect();
 

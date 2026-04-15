@@ -135,6 +135,7 @@ impl StringOverlay {
                     subj: 0,
                     clip: STRING_BACK_CLIP,
                 },
+                tag: 0,
             },
             Ordering::Greater => Segment {
                 x_segment: XSegment { a: b, b: a },
@@ -142,6 +143,7 @@ impl StringOverlay {
                     subj: 0,
                     clip: STRING_FORWARD_CLIP,
                 },
+                tag: 0,
             },
             Ordering::Equal => return,
         };

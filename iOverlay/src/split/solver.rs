@@ -161,12 +161,13 @@ impl SplitSolver {
             };
 
             let count = s0.count;
+            let tag = s0.tag;
             let x_seg = s0.x_segment;
 
             if start + 1 == i {
                 // single split
-                *s0 = Segment::create_and_validate(x_seg.a, m0.point, count);
-                let s1 = Segment::create_and_validate(m0.point, x_seg.b, count);
+                *s0 = Segment::create_and_validate_tagged(x_seg.a, m0.point, count, tag);
+                let s1 = Segment::create_and_validate_tagged(m0.point, x_seg.b, count, tag);
                 segments.push(s1);
 
                 continue;
@@ -177,16 +178,16 @@ impl SplitSolver {
             Self::sort_sub_marks(sub_marks, x_seg);
 
             let m0 = sub_marks[0];
-            *s0 = Segment::create_and_validate(x_seg.a, m0.point, count);
+            *s0 = Segment::create_and_validate_tagged(x_seg.a, m0.point, count, tag);
 
             let mut p0 = m0.point;
 
             for mi in sub_marks.iter().skip(1) {
-                segments.push(Segment::create_and_validate(p0, mi.point, count));
+                segments.push(Segment::create_and_validate_tagged(p0, mi.point, count, tag));
                 p0 = mi.point;
             }
 
-            segments.push(Segment::create_and_validate(p0, x_seg.b, count));
+            segments.push(Segment::create_and_validate_tagged(p0, x_seg.b, count, tag));
         }
 
         segments.sort_by_ab(solver.is_parallel_sort_allowed());

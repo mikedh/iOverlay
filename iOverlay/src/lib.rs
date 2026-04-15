@@ -199,7 +199,7 @@ pub mod string;
 pub mod vector;
 
 pub(crate) mod bind;
-pub(crate) mod geom;
+pub mod geom;
 pub(crate) mod split;
 pub(crate) mod util;
 

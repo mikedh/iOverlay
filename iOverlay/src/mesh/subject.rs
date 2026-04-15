@@ -10,11 +10,13 @@ impl Segment<ShapeCountBoolean> {
             Self {
                 x_segment: XSegment { a: p0, b: p1 },
                 count: ShapeCountBoolean { subj: 1, clip: 0 },
+                tag: 0,
             }
         } else {
             Self {
                 x_segment: XSegment { a: p1, b: p0 },
                 count: ShapeCountBoolean { subj: -1, clip: 0 },
+                tag: 0,
             }
         }
     }

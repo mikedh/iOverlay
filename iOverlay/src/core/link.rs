@@ -5,16 +5,23 @@ use crate::segm::segment::SegmentFill;
 use alloc::vec::Vec;
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct OverlayLink {
-    pub(crate) a: IdPoint,
-    pub(crate) b: IdPoint,
-    pub(crate) fill: SegmentFill,
+pub struct OverlayLink {
+    pub a: IdPoint,
+    pub b: IdPoint,
+    pub fill: SegmentFill,
+    /// User-supplied edge tag, propagated from the input `Segment`.
+    pub tag: u32,
 }
 
 impl OverlayLink {
     #[inline(always)]
     pub(crate) fn new(a: IdPoint, b: IdPoint, fill: SegmentFill) -> OverlayLink {
-        OverlayLink { a, b, fill }
+        OverlayLink { a, b, fill, tag: 0 }
+    }
+
+    #[inline(always)]
+    pub(crate) fn new_tagged(a: IdPoint, b: IdPoint, fill: SegmentFill, tag: u32) -> OverlayLink {
+        OverlayLink { a, b, fill, tag }
     }
 
     #[inline(always)]
