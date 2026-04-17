@@ -8,6 +8,7 @@ use crate::core::nearest_vector::NearestVector;
 use crate::core::overlay::ContourDirection;
 use crate::geom::v_segment::VSegment;
 use crate::i_shape::flat::buffer::FlatContoursBuffer;
+use crate::segm::segment::TagPair;
 use alloc::vec;
 use alloc::vec::Vec;
 use i_float::int::point::IntPoint;
@@ -30,7 +31,7 @@ pub(crate) enum VisitState {
 #[derive(Default)]
 pub struct BooleanExtractionBuffer {
     pub(crate) points: Vec<IntPoint>,
-    pub(crate) tags: Vec<u16>,
+    pub(crate) tags: Vec<TagPair>,
     pub(crate) visited: Vec<VisitState>,
     pub(crate) contour_visited: Option<Vec<VisitState>>,
 }
@@ -63,14 +64,16 @@ impl OverlayGraph<'_> {
     }
 
     /// Extract shapes with per-edge tags emitted inline during graph
-    /// traversal. Each output edge carries the tag of the graph link
-    /// it was traversed from — no post-hoc BTreeMap recovery needed.
+    /// traversal. Each output edge carries the `TagPair` of the graph
+    /// link it was traversed from — up to two source tags survive every
+    /// merge, letting downstream consumers pick whichever matches their
+    /// ring-local context (see [`TagPair`]).
     #[inline]
     pub fn extract_shapes_with_tags(
         &self,
         overlay_rule: OverlayRule,
         buffer: &mut BooleanExtractionBuffer,
-    ) -> (IntShapes, Vec<Vec<Vec<u16>>>) {
+    ) -> (IntShapes, Vec<Vec<Vec<TagPair>>>) {
         self.links
             .filter_by_overlay_into(overlay_rule, &mut buffer.visited);
         debug_assert!(!self.options.ogc, "OGC extraction doesn't support inline tags yet");
@@ -106,89 +109,7 @@ impl OverlayGraph<'_> {
         overlay_rule: OverlayRule,
         buffer: &mut BooleanExtractionBuffer,
     ) -> IntShapes {
-        let clockwise = self.options.output_direction == ContourDirection::Clockwise;
-
-        let mut shapes = Vec::new();
-        let mut holes = Vec::new();
-        let mut anchors = Vec::new();
-
-        buffer.points.reserve_capacity(buffer.visited.len());
-
-        let mut link_index = 0;
-        let mut anchors_already_sorted = true;
-        while link_index < buffer.visited.len() {
-            if buffer.visited.is_visited(link_index) {
-                link_index += 1;
-                continue;
-            }
-
-            let left_top_link = unsafe {
-                GraphUtil::find_left_top_link(self.links, self.nodes, link_index, &buffer.visited)
-            };
-
-            let link = unsafe {
-                self.links.get_unchecked(left_top_link)
-            };
-            let is_hole = overlay_rule.is_fill_top(link.fill);
-            let visited_state = [VisitState::HullVisited, VisitState::HoleVisited][is_hole as usize];
-
-            let direction = is_hole == clockwise;
-            let start_data = StartPathData::new(direction, link, left_top_link);
-
-            self.find_contour_no_tags(
-                &start_data,
-                direction,
-                visited_state,
-                &mut buffer.visited,
-                &mut buffer.points,
-            );
-            let (is_valid, is_modified) = buffer.points.validate(
-                self.options.min_output_area,
-                self.options.preserve_output_collinear,
-            );
-
-            if !is_valid {
-                link_index += 1;
-                continue;
-            }
-
-            let contour = buffer.points.as_slice().to_vec();
-
-            if is_hole {
-                let mut v_segment = if clockwise {
-                    VSegment {
-                        a: contour[1],
-                        b: contour[2],
-                    }
-                } else {
-                    VSegment {
-                        a: contour[0],
-                        b: contour[contour.len() - 1],
-                    }
-                };
-                if is_modified {
-                    let most_left = contour.left_bottom_segment();
-                    if most_left != v_segment {
-                        v_segment = most_left;
-                        anchors_already_sorted = false;
-                    }
-                };
-
-                debug_assert_eq!(v_segment, contour.left_bottom_segment());
-                let id_data = ContourIndex::new_hole(holes.len());
-                anchors.push(IdSegment::with_segment(id_data, v_segment));
-                holes.push(contour);
-            } else {
-                shapes.push(vec![contour]);
-            }
-        }
-
-        if !anchors_already_sorted {
-            anchors.sort_unstable_by(|s0, s1| s0.v_segment.a.cmp(&s1.v_segment.a));
-        }
-
-        shapes.join_sorted_holes(holes, anchors, clockwise);
-
+        let (shapes, ()) = self.extract_impl::<NoOpTagCollector>(overlay_rule, buffer);
         shapes
     }
 
@@ -196,13 +117,26 @@ impl OverlayGraph<'_> {
         &self,
         overlay_rule: OverlayRule,
         buffer: &mut BooleanExtractionBuffer,
-    ) -> (IntShapes, Vec<Vec<Vec<u16>>>) {
+    ) -> (IntShapes, Vec<Vec<Vec<TagPair>>>) {
+        self.extract_impl::<VecTagCollector>(overlay_rule, buffer)
+    }
+
+    /// Shared body for [`Self::extract_no_tags`] and
+    /// [`Self::extract_with_tags`]. The two paths are byte-identical
+    /// except for tag work, which is hidden behind [`TagCollector`].
+    /// `NoOpTagCollector` compiles every tag-related branch out, so
+    /// this stays zero-cost on the fast path.
+    fn extract_impl<TC: TagCollector>(
+        &self,
+        overlay_rule: OverlayRule,
+        buffer: &mut BooleanExtractionBuffer,
+    ) -> (IntShapes, TC::ShapeTags) {
         let clockwise = self.options.output_direction == ContourDirection::Clockwise;
 
         let mut shapes = Vec::new();
-        let mut shape_tags: Vec<Vec<Vec<u16>>> = Vec::new();
+        let mut shape_tags = TC::ShapeTags::default();
         let mut holes = Vec::new();
-        let mut hole_tags: Vec<Vec<u16>> = Vec::new();
+        let mut hole_tags = TC::HoleTags::default();
         let mut anchors = Vec::new();
 
         buffer.points.reserve_capacity(buffer.visited.len());
@@ -219,16 +153,15 @@ impl OverlayGraph<'_> {
                 GraphUtil::find_left_top_link(self.links, self.nodes, link_index, &buffer.visited)
             };
 
-            let link = unsafe {
-                self.links.get_unchecked(left_top_link)
-            };
+            let link = unsafe { self.links.get_unchecked(left_top_link) };
             let is_hole = overlay_rule.is_fill_top(link.fill);
             let visited_state = [VisitState::HullVisited, VisitState::HoleVisited][is_hole as usize];
 
             let direction = is_hole == clockwise;
             let start_data = StartPathData::new(direction, link, left_top_link);
 
-            self.find_contour(
+            TC::traverse(
+                self,
                 &start_data,
                 direction,
                 visited_state,
@@ -247,19 +180,12 @@ impl OverlayGraph<'_> {
             }
 
             let contour = buffer.points.as_slice().to_vec();
-            let contour_tags = buffer.tags.as_slice().to_vec();
 
             if is_hole {
                 let mut v_segment = if clockwise {
-                    VSegment {
-                        a: contour[1],
-                        b: contour[2],
-                    }
+                    VSegment { a: contour[1], b: contour[2] }
                 } else {
-                    VSegment {
-                        a: contour[0],
-                        b: contour[contour.len() - 1],
-                    }
+                    VSegment { a: contour[0], b: contour[contour.len() - 1] }
                 };
                 if is_modified {
                     let most_left = contour.left_bottom_segment();
@@ -273,10 +199,10 @@ impl OverlayGraph<'_> {
                 let id_data = ContourIndex::new_hole(holes.len());
                 anchors.push(IdSegment::with_segment(id_data, v_segment));
                 holes.push(contour);
-                hole_tags.push(contour_tags);
+                TC::push_hole(&mut hole_tags, &buffer.tags);
             } else {
                 shapes.push(vec![contour]);
-                shape_tags.push(vec![contour_tags]);
+                TC::push_shape(&mut shape_tags, &buffer.tags);
             }
         }
 
@@ -284,32 +210,10 @@ impl OverlayGraph<'_> {
             anchors.sort_unstable_by(|s0, s1| s0.v_segment.a.cmp(&s1.v_segment.a));
         }
 
-        // Track shape count before hole joining so we can assign
-        // hole tags to the correct shape afterward.
         let shape_count_before = shapes.len();
         shapes.join_sorted_holes(holes, anchors, clockwise);
 
-        // Assign hole tags: after join, shapes[i] has [exterior, holes...].
-        // For single-shape output (common: buffer), all holes go into shapes[0].
-        // For multi-shape, distribute hole_tags in order to shapes that grew.
-        if shape_count_before == 1 && !hole_tags.is_empty() {
-            shape_tags[0].extend(hole_tags);
-        } else {
-            // Match holes to shapes by checking which shapes gained contours.
-            let mut hole_idx = 0;
-            for (si, shape) in shapes.iter().enumerate() {
-                let existing_tag_count = shape_tags.get(si).map_or(0, |t| t.len());
-                while existing_tag_count + (hole_idx < hole_tags.len()) as usize <= shape.len()
-                    && hole_idx < hole_tags.len()
-                    && shape_tags.get(si).map_or(0, |t| t.len()) < shape.len()
-                {
-                    if si < shape_tags.len() {
-                        shape_tags[si].push(hole_tags[hole_idx].clone());
-                    }
-                    hole_idx += 1;
-                }
-            }
-        }
+        TC::distribute_hole_tags(&mut shape_tags, hole_tags, &shapes, shape_count_before);
 
         (shapes, shape_tags)
     }
@@ -321,7 +225,7 @@ impl OverlayGraph<'_> {
         visited_state: VisitState,
         visited: &mut [VisitState],
         points: &mut Vec<IntPoint>,
-        tags: &mut Vec<u16>,
+        tags: &mut Vec<TagPair>,
     ) {
         let mut link_id = start_data.link_id;
         let mut node_id = start_data.node_id;
@@ -429,12 +333,159 @@ impl OverlayGraph<'_> {
     }
 }
 
+/// Strategy used by [`OverlayGraph::extract_impl`] to handle per-edge
+/// tag collection. Two impls exist:
+///
+/// - [`NoOpTagCollector`]: zero-cost strategy for callers that only need
+///   the shape geometry. All methods are compiled down to nothing; the
+///   associated types are `()` so no allocations happen.
+/// - [`VecTagCollector`]: collects one `Vec<TagPair>` of link tags per
+///   contour, nested inside a `Vec<Vec<Vec<TagPair>>>` (shape → contour →
+///   edge-tag). Used by rmesh to propagate source-face tags through
+///   booleans.
+///
+/// The trait is generic (not dyn-safe) so the fast path stays branchless.
+pub(crate) trait TagCollector {
+    /// Accumulator the impl builds up while walking shapes.
+    type ShapeTags: Default;
+    /// Accumulator the impl builds up while walking holes, before
+    /// [`distribute_hole_tags`] folds them back into shapes.
+    type HoleTags: Default;
+
+    /// Walk one closed contour starting from `start_data`, recording
+    /// points into `points` and tags into `tags` as appropriate for
+    /// the impl. `NoOpTagCollector` dispatches to `find_contour_no_tags`
+    /// (skips tag collection entirely); `VecTagCollector` dispatches to
+    /// `find_contour`.
+    fn traverse(
+        graph: &OverlayGraph<'_>,
+        start_data: &StartPathData,
+        clockwise: bool,
+        visited_state: VisitState,
+        visited: &mut [VisitState],
+        points: &mut Vec<IntPoint>,
+        tags: &mut Vec<TagPair>,
+    );
+
+    /// Push the tags just written to `buffer_tags` onto the hole
+    /// accumulator. `NoOpTagCollector` ignores the buffer.
+    fn push_hole(hole_tags: &mut Self::HoleTags, buffer_tags: &[TagPair]);
+
+    /// Push the tags just written to `buffer_tags` onto the shape
+    /// accumulator, wrapping them as a single-contour shape (outer
+    /// boundary). Holes are spliced in later via `distribute_hole_tags`.
+    fn push_shape(shape_tags: &mut Self::ShapeTags, buffer_tags: &[TagPair]);
+
+    /// After `shapes.join_sorted_holes` has folded the hole contours
+    /// into the correct shapes, mirror that distribution on the tag
+    /// accumulator so that `shape_tags[i]` lines up 1-to-1 with
+    /// `shapes[i]`. `NoOpTagCollector` is a no-op.
+    fn distribute_hole_tags(
+        shape_tags: &mut Self::ShapeTags,
+        hole_tags: Self::HoleTags,
+        shapes: &IntShapes,
+        shape_count_before: usize,
+    );
+}
+
+/// Zero-cost tag collector used by the untagged extract path.
+pub(crate) struct NoOpTagCollector;
+
+impl TagCollector for NoOpTagCollector {
+    type ShapeTags = ();
+    type HoleTags = ();
+
+    #[inline(always)]
+    fn traverse(
+        graph: &OverlayGraph<'_>,
+        start_data: &StartPathData,
+        clockwise: bool,
+        visited_state: VisitState,
+        visited: &mut [VisitState],
+        points: &mut Vec<IntPoint>,
+        _tags: &mut Vec<TagPair>,
+    ) {
+        graph.find_contour_no_tags(start_data, clockwise, visited_state, visited, points);
+    }
+
+    #[inline(always)]
+    fn push_hole(_: &mut (), _: &[TagPair]) {}
+
+    #[inline(always)]
+    fn push_shape(_: &mut (), _: &[TagPair]) {}
+
+    #[inline(always)]
+    fn distribute_hole_tags(_: &mut (), _: (), _: &IntShapes, _: usize) {}
+}
+
+/// Collects per-edge tags as `Vec<Vec<Vec<TagPair>>>` (shape → contour →
+/// edge-tag). Matches the shape of `IntShapes` 1-to-1.
+pub(crate) struct VecTagCollector;
+
+impl TagCollector for VecTagCollector {
+    type ShapeTags = Vec<Vec<Vec<TagPair>>>;
+    type HoleTags = Vec<Vec<TagPair>>;
+
+    #[inline]
+    fn traverse(
+        graph: &OverlayGraph<'_>,
+        start_data: &StartPathData,
+        clockwise: bool,
+        visited_state: VisitState,
+        visited: &mut [VisitState],
+        points: &mut Vec<IntPoint>,
+        tags: &mut Vec<TagPair>,
+    ) {
+        graph.find_contour(start_data, clockwise, visited_state, visited, points, tags);
+    }
+
+    #[inline]
+    fn push_hole(hole_tags: &mut Self::HoleTags, buffer_tags: &[TagPair]) {
+        hole_tags.push(buffer_tags.to_vec());
+    }
+
+    #[inline]
+    fn push_shape(shape_tags: &mut Self::ShapeTags, buffer_tags: &[TagPair]) {
+        shape_tags.push(vec![buffer_tags.to_vec()]);
+    }
+
+    fn distribute_hole_tags(
+        shape_tags: &mut Self::ShapeTags,
+        hole_tags: Self::HoleTags,
+        shapes: &IntShapes,
+        shape_count_before: usize,
+    ) {
+        // Single-shape output (the common buffer/offset case): every
+        // hole belongs to shapes[0].
+        if shape_count_before == 1 && !hole_tags.is_empty() {
+            shape_tags[0].extend(hole_tags);
+            return;
+        }
+
+        // Multi-shape: walk shapes in order, attaching hole_tags to
+        // whichever shape has gained contours since join_sorted_holes.
+        let mut hole_idx = 0;
+        for (si, shape) in shapes.iter().enumerate() {
+            let existing_tag_count = shape_tags.get(si).map_or(0, |t| t.len());
+            while existing_tag_count + usize::from(hole_idx < hole_tags.len()) <= shape.len()
+                && hole_idx < hole_tags.len()
+                && shape_tags.get(si).map_or(0, |t| t.len()) < shape.len()
+            {
+                if si < shape_tags.len() {
+                    shape_tags[si].push(hole_tags[hole_idx].clone());
+                }
+                hole_idx += 1;
+            }
+        }
+    }
+}
+
 pub(crate) struct StartPathData {
     pub(crate) begin: IntPoint,
     pub(crate) node_id: usize,
     pub(crate) link_id: usize,
     pub(crate) last_node_id: usize,
-    pub(crate) start_tag: u16,
+    pub(crate) start_tag: TagPair,
 }
 
 impl StartPathData {

@@ -1,7 +1,7 @@
 use crate::core::extract::VisitState;
 use crate::core::overlay_rule::OverlayRule;
 use crate::geom::id_point::IdPoint;
-use crate::segm::segment::SegmentFill;
+use crate::segm::segment::{SegmentFill, TagPair};
 use alloc::vec::Vec;
 
 #[derive(Debug, Clone, Copy)]
@@ -9,13 +9,18 @@ pub(crate) struct OverlayLink {
     pub(crate) a: IdPoint,
     pub(crate) b: IdPoint,
     pub(crate) fill: SegmentFill,
-    /// User-supplied edge tag, propagated from the input `Segment`.
-    pub(crate) tag: u16,
+    /// Per-edge source-tag pair propagated from the input `Segment`.
+    pub(crate) tag: TagPair,
 }
 
 impl OverlayLink {
     #[inline(always)]
-    pub(crate) fn new_tagged(a: IdPoint, b: IdPoint, fill: SegmentFill, tag: u16) -> OverlayLink {
+    pub(crate) fn new_tagged(
+        a: IdPoint,
+        b: IdPoint,
+        fill: SegmentFill,
+        tag: TagPair,
+    ) -> OverlayLink {
         OverlayLink { a, b, fill, tag }
     }
 

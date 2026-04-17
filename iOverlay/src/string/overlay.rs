@@ -4,7 +4,7 @@ use crate::core::overlay::{IntOverlayOptions, ShapeType};
 use crate::core::solver::Solver;
 use crate::geom::x_segment::XSegment;
 use crate::segm::build::BuildSegments;
-use crate::segm::segment::Segment;
+use crate::segm::segment::{Segment, UNTAGGED};
 use crate::segm::string::STRING_BACK_CLIP;
 use crate::segm::string::STRING_FORWARD_CLIP;
 use crate::segm::string::ShapeCountString;
@@ -135,7 +135,7 @@ impl StringOverlay {
                     subj: 0,
                     clip: STRING_BACK_CLIP,
                 },
-                tag: 0,
+                tag: UNTAGGED,
             },
             Ordering::Greater => Segment {
                 x_segment: XSegment { a: b, b: a },
@@ -143,7 +143,7 @@ impl StringOverlay {
                     subj: 0,
                     clip: STRING_FORWARD_CLIP,
                 },
-                tag: 0,
+                tag: UNTAGGED,
             },
             Ordering::Equal => return,
         };

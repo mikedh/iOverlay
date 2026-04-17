@@ -1,6 +1,6 @@
 use crate::core::overlay::ShapeType;
 use crate::geom::x_segment::XSegment;
-use crate::segm::segment::Segment;
+use crate::segm::segment::{Segment, UNTAGGED};
 use crate::segm::winding::WindingCount;
 use alloc::vec::Vec;
 use i_float::int::point::IntPoint;
@@ -126,13 +126,13 @@ impl<C: Send> Segment<C> {
             Self {
                 x_segment: XSegment { a: p0, b: p1 },
                 count: direct,
-                tag: 0,
+                tag: UNTAGGED,
             }
         } else {
             Self {
                 x_segment: XSegment { a: p1, b: p0 },
                 count: invert,
-                tag: 0,
+                tag: UNTAGGED,
             }
         }
     }
@@ -144,7 +144,7 @@ mod tests {
     use crate::segm::boolean::ShapeCountBoolean;
     use crate::segm::build::BuildSegments;
     use crate::segm::merge::ShapeSegmentsMerge;
-    use crate::segm::segment::Segment;
+    use crate::segm::segment::{Segment, UNTAGGED};
     use alloc::vec::Vec;
     use i_float::int::point::IntPoint;
 

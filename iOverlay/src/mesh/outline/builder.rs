@@ -5,7 +5,15 @@ use crate::mesh::outline::section::OffsetSection;
 use crate::mesh::outline::uniq_iter::{UniqueSegment, UniqueSegmentsIter};
 use crate::mesh::style::LineJoin;
 use crate::segm::boolean::ShapeCountBoolean;
-use crate::segm::segment::Segment;
+use crate::segm::segment::{Segment, tag_pair};
+
+/// Reserved tag value identifying a join/fillet edge emitted by the
+/// outline builder. User tags must lie strictly below this sentinel
+/// (`0..JOIN_TAG_SENTINEL`), so callers reading per-edge tags off the
+/// outline output can distinguish "this came from input edge N" from
+/// "this is a constructed corner fillet". The rmesh fork mirrors this
+/// constant in `path/buffer/discretize.rs::JOIN_TAG`.
+pub const JOIN_TAG_SENTINEL: u16 = u16::MAX;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
@@ -149,42 +157,21 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> OutlineBu
 }
 
 impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J, P, T> {
+    #[inline]
     fn build(
         &self,
         path: &[P],
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
-        let iter = path.iter().enumerate().map(|(i, p)| (adapter.float_to_int(p), i));
-        let mut uniq_segments = if let Some(iter) = UniqueSegmentsIter::new(iter) {
-            iter
-        } else {
-            return;
-        };
-
-        let us0 = if let Some(us) = uniq_segments.next() {
-            us
-        } else {
-            return;
-        };
-
-        let s0 = OffsetSection::new(self.radius, &us0, adapter);
-        let mut sk = s0.clone();
-
-        segments.push_some(sk.top_segment());
-
-        for usi in uniq_segments {
-            let si = OffsetSection::new(self.radius, &usi, adapter);
-            segments.push_some(si.top_segment());
-            self.feed_join(&sk, &si, adapter, segments);
-            sk = si;
-        }
-        self.feed_join(&sk, &s0, adapter, segments);
+        self.build_impl(path, None, adapter, segments);
     }
 
     /// Like `build`, but sets `segment.tag` from the parallel `tags`
     /// array. `tags.len()` must equal `path.len()`. Edge `i` gets
-    /// `tags[i]`; join segments between different-tag edges get tag 0.
+    /// `tags[i]`; join segments between different-tag edges get the
+    /// `JOIN_TAG_SENTINEL`.
+    #[inline]
     fn build_and_tag(
         &self,
         path: &[P],
@@ -193,12 +180,31 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         debug_assert_eq!(path.len(), tags.len());
+        self.build_impl(path, Some(tags), adapter, segments);
+    }
+
+    /// Shared body for `build` and `build_and_tag`. The two call sites
+    /// differ only in whether they apply per-edge tags; this function
+    /// runs the offset/join pipeline once and short-circuits the tag
+    /// writes when `tags` is `None`. `#[inline]` lets the monomorphized
+    /// untagged path collapse back to a straight offset pipeline —
+    /// no branches on the hot loop.
+    #[inline]
+    fn build_impl(
+        &self,
+        path: &[P],
+        tags: Option<&[u16]>,
+        adapter: &FloatPointAdapter<P, T>,
+        segments: &mut Vec<Segment<ShapeCountBoolean>>,
+    ) {
         let n = path.len();
-        if n < 2 { return; }
+        if n < 2 {
+            return;
+        }
 
         // Each UniqueSegment carries edge_index — the index of the
         // input edge it came from. Tag lookup is tags[edge_index],
-        // direct array access, no map, no collisions.
+        // a direct array access: no map, no collisions.
         let iter = path.iter().enumerate().map(|(i, p)| (adapter.float_to_int(p), i));
         let mut uniq = match UniqueSegmentsIter::new(iter) {
             Some(u) => u,
@@ -209,40 +215,53 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
             None => return,
         };
 
+        let edge_tag = |edge_index: usize| -> u16 {
+            tags.map_or(0, |t| t[edge_index % n])
+        };
+        // `apply_tag` owns the &mut Vec through its argument, so the
+        // closure itself only captures the boolean Option::is_some.
+        let has_tags = tags.is_some();
+        let apply_tag =
+            |segments: &mut Vec<Segment<ShapeCountBoolean>>, mark: usize, tag: u16| {
+                if has_tags {
+                    let pair = tag_pair(tag);
+                    for seg in &mut segments[mark..] {
+                        seg.tag = pair;
+                    }
+                }
+            };
+
         let s0 = OffsetSection::new(self.radius, &us0, adapter);
         let mut sk = s0.clone();
-        let mut prev_tag = tags[us0.edge_index % n];
+        let mut prev_tag = edge_tag(us0.edge_index);
 
-        // First top segment
         let mark = segments.len();
         segments.push_some(sk.top_segment());
-        for seg in &mut segments[mark..] { seg.tag = prev_tag; }
+        apply_tag(segments, mark, prev_tag);
 
         for usi in uniq {
             let si = OffsetSection::new(self.radius, &usi, adapter);
-            let cur_tag = tags[usi.edge_index % n];
+            let cur_tag = edge_tag(usi.edge_index);
 
-            // Top segment for this edge
             let mark = segments.len();
             segments.push_some(si.top_segment());
-            for seg in &mut segments[mark..] { seg.tag = cur_tag; }
+            apply_tag(segments, mark, cur_tag);
 
-            // Join: same tag → edge tag, different → JOIN sentinel
-            let jt = if prev_tag == cur_tag { prev_tag } else { u16::MAX };
+            // Join: same tag → edge tag, different → JOIN sentinel.
+            let jt = if prev_tag == cur_tag { prev_tag } else { JOIN_TAG_SENTINEL };
             let mark = segments.len();
             self.feed_join(&sk, &si, adapter, segments);
-            for seg in &mut segments[mark..] { seg.tag = jt; }
+            apply_tag(segments, mark, jt);
 
             sk = si;
             prev_tag = cur_tag;
         }
 
-        // Closing join
-        let first_tag = tags[us0.edge_index % n];
-        let jt = if prev_tag == first_tag { prev_tag } else { u16::MAX };
+        let first_tag = edge_tag(us0.edge_index);
+        let jt = if prev_tag == first_tag { prev_tag } else { JOIN_TAG_SENTINEL };
         let mark = segments.len();
         self.feed_join(&sk, &s0, adapter, segments);
-        for seg in &mut segments[mark..] { seg.tag = jt; }
+        apply_tag(segments, mark, jt);
     }
 
     #[inline]

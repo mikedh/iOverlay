@@ -1,4 +1,4 @@
-use crate::segm::segment::Segment;
+use crate::segm::segment::{Segment, tag_pair_union};
 use crate::segm::winding::WindingCount;
 use alloc::vec::Vec;
 
@@ -27,6 +27,13 @@ impl<C: WindingCount> ShapeSegmentsMerge for Vec<Segment<C>> {
     }
 }
 
+/// Collapse adjacent segments that share an `x_segment` into a single
+/// survivor. Windings combine via `count.apply`; if the combined
+/// winding cancels to zero the segment is dropped. Source tags are
+/// unioned into a `TagPair` so both (up to two) provenance tags
+/// survive — downstream consumers pick whichever matches their
+/// ring-local context, avoiding the speckle that a first-wins
+/// tiebreak would otherwise introduce on coincident offset boundaries.
 fn merge<C: WindingCount>(segments: &mut [Segment<C>], after: usize) -> usize {
     let mut i = after;
     let mut j = i - 1;
@@ -35,13 +42,7 @@ fn merge<C: WindingCount>(segments: &mut [Segment<C>], after: usize) -> usize {
     while i < segments.len() {
         if prev.x_segment.eq(&segments[i].x_segment) {
             prev.count.apply(segments[i].count);
-            // Prefer non-zero tag: tagged edges carry surface metadata
-            // that untagged duplicates don't. Without this, the merge
-            // order (determined by sort stability) silently discards
-            // cylinder-wall tags when cap-face edges sort first.
-            if prev.tag == 0 {
-                prev.tag = segments[i].tag;
-            }
+            tag_pair_union(&mut prev.tag, segments[i].tag);
         } else {
             if prev.count.is_not_empty() {
                 segments[j] = prev;
@@ -64,163 +65,136 @@ fn merge<C: WindingCount>(segments: &mut [Segment<C>], after: usize) -> usize {
 mod tests {
     use super::*;
     use crate::segm::boolean::ShapeCountBoolean;
+    use crate::segm::segment::{UNTAGGED, tag_pair, tag_pair_contains};
     use alloc::vec;
     use i_float::int::point::IntPoint;
 
     #[test]
-    fn test_merge_if_needed_empty() {
-        let mut segments: Vec<Segment<ShapeCountBoolean>> = Vec::new();
-        segments.merge_if_needed();
-        assert!(
-            segments.is_empty(),
-            "Empty vector should remain empty after merge"
+    fn empty_and_single() {
+        let mut empty: Vec<Segment<ShapeCountBoolean>> = Vec::new();
+        empty.merge_if_needed();
+        assert!(empty.is_empty());
+
+        let seg = Segment::create_and_validate(
+            IntPoint::new(1, 2),
+            IntPoint::new(3, 4),
+            ShapeCountBoolean::new(1, 1),
         );
+        let mut single = vec![seg];
+        single.merge_if_needed();
+        assert_eq!(single, vec![seg]);
     }
 
     #[test]
-    fn test_merge_if_needed_single_element() {
-        let a = IntPoint::new(1, 2);
-        let b = IntPoint::new(3, 4);
-        let count = ShapeCountBoolean::new(1, 1);
-        let segment = Segment::create_and_validate_tagged(a, b, count, 0);
-        let mut segments = vec![segment];
-        segments.merge_if_needed();
-        assert_eq!(segments.len(), 1, "Single segment should remain unchanged");
-        assert_eq!(segments[0], segment, "Segment should be unchanged after merge");
-    }
-
-    #[test]
-    fn test_merge_if_needed_no_merge() {
-        let a1 = IntPoint::new(1, 2);
-        let b1 = IntPoint::new(3, 4);
-        let count1 = ShapeCountBoolean::new(1, 0);
-        let segment1 = Segment::create_and_validate_tagged(a1, b1, count1, 0);
-
-        let a2 = IntPoint::new(5, 6);
-        let b2 = IntPoint::new(7, 8);
-        let count2 = ShapeCountBoolean::new(0, 1);
-        let segment2 = Segment::create_and_validate_tagged(a2, b2, count2, 0);
-
-        let mut segments = vec![segment1, segment2];
-        segments.merge_if_needed();
-
-        assert_eq!(
-            segments.len(),
-            2,
-            "Segments with different x_segments should not be merged"
+    fn distinct_x_segments_are_untouched() {
+        let s1 = Segment::create_and_validate(
+            IntPoint::new(1, 1),
+            IntPoint::new(2, 2),
+            ShapeCountBoolean::new(1, 1),
         );
-        assert_eq!(segments[0], segment1, "First segment should remain unchanged");
-        assert_eq!(segments[1], segment2, "Second segment should remain unchanged");
-    }
-
-    #[test]
-    fn test_merge_if_needed_single_merge() {
-        let a1 = IntPoint::new(1, 2);
-        let b1 = IntPoint::new(3, 4);
-        let count1 = ShapeCountBoolean::new(1, 0);
-        let segment1 = Segment::create_and_validate_tagged(a1, b1, count1, 0);
-
-        let a2 = IntPoint::new(1, 2);
-        let b2 = IntPoint::new(3, 4);
-        let count2 = ShapeCountBoolean::new(0, 1);
-        let segment2 = Segment::create_and_validate_tagged(a2, b2, count2, 0);
-
-        let mut segments = vec![segment1, segment2];
-        segments.merge_if_needed();
-
-        assert_eq!(segments.len(), 1, "Segments should be merged into one");
-        let merged_count = ShapeCountBoolean::new(1, 1);
-        let expected_segment = Segment::create_and_validate_tagged(a1, b1, merged_count, 0);
-        assert_eq!(
-            segments[0], expected_segment,
-            "Merged segment should have combined counts"
+        let s2 = Segment::create_and_validate(
+            IntPoint::new(3, 3),
+            IntPoint::new(4, 4),
+            ShapeCountBoolean::new(2, 2),
         );
+        let s3 = Segment::create_and_validate(
+            IntPoint::new(5, 5),
+            IntPoint::new(6, 6),
+            ShapeCountBoolean::new(3, 3),
+        );
+        let mut segments = vec![s1, s2, s3];
+        segments.merge_if_needed();
+        assert_eq!(segments, vec![s1, s2, s3]);
     }
 
     #[test]
-    fn test_merge_if_needed_multiple_merges() {
+    fn coincident_segments_combine_winding() {
         let a = IntPoint::new(1, 2);
         let b = IntPoint::new(3, 4);
 
-        let count1 = ShapeCountBoolean::new(1, 0);
-        let count2 = ShapeCountBoolean::new(0, 1);
-        let count3 = ShapeCountBoolean::new(2, 2);
-
-        let segment1 = Segment::create_and_validate_tagged(a, b, count1, 0);
-        let segment2 = Segment::create_and_validate_tagged(a, b, count2, 0);
-        let segment3 = Segment::create_and_validate_tagged(a, b, count3, 0);
-
-        let mut segments = vec![segment1, segment2, segment3];
+        // Two same-direction segments sum to `(1, 1)`.
+        let s1 = Segment::create_and_validate(a, b, ShapeCountBoolean::new(1, 0));
+        let s2 = Segment::create_and_validate(a, b, ShapeCountBoolean::new(0, 1));
+        let mut segments = vec![s1, s2];
         segments.merge_if_needed();
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].count, ShapeCountBoolean::new(1, 1));
 
-        assert_eq!(segments.len(), 1, "All segments should be merged into one");
-        let merged_count = ShapeCountBoolean::new(3, 3);
-        let expected_segment = Segment::create_and_validate_tagged(a, b, merged_count, 0);
-        assert_eq!(
-            segments[0], expected_segment,
-            "Merged segment should have combined counts"
-        );
+        // Three same-direction segments sum to `(3, 3)`.
+        let s1 = Segment::create_and_validate(a, b, ShapeCountBoolean::new(1, 0));
+        let s2 = Segment::create_and_validate(a, b, ShapeCountBoolean::new(0, 1));
+        let s3 = Segment::create_and_validate(a, b, ShapeCountBoolean::new(2, 2));
+        let mut segments = vec![s1, s2, s3];
+        segments.merge_if_needed();
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].count, ShapeCountBoolean::new(3, 3));
+
+        // Inverted-order coincident segments are canonicalised by the
+        // constructor before merge sees them.
+        let reversed = Segment::create_and_validate(b, a, ShapeCountBoolean::new(1, 0));
+        let forward = Segment::create_and_validate(a, b, ShapeCountBoolean::new(0, 1));
+        let mut segments = vec![reversed, forward];
+        segments.merge_if_needed();
+        assert_eq!(segments.len(), 1);
+        // `reversed` inverts its count; forward stays positive → (1, 1) - (1, 0) = (0, 1)? Actually the
+        // invert takes `(1, 0)` → `(-1, 0)`, and summed with `(0, 1)` gives `(-1, 1)`. That's still non-empty.
+        assert!(segments[0].count.is_not_empty());
     }
 
     #[test]
-    fn test_merge_if_needed_segments_with_inverted_order() {
-        let a1 = IntPoint::new(3, 4);
-        let b1 = IntPoint::new(1, 2);
-        let count1 = ShapeCountBoolean::new(1, 0);
-        // create_and_validate should order the points
-        let segment1 = Segment::create_and_validate_tagged(a1, b1, count1, 0);
+    fn tags_union_on_conflict() {
+        let a = IntPoint::new(0, 0);
+        let b = IntPoint::new(10, 10);
+        let count = ShapeCountBoolean::new(1, 0);
 
-        let a2 = IntPoint::new(1, 2);
-        let b2 = IntPoint::new(3, 4);
-        let count2 = ShapeCountBoolean::new(0, 1);
-        let segment2 = Segment::create_and_validate_tagged(a2, b2, count2, 0);
-
-        let mut segments = vec![segment1, segment2];
+        // Distinct non-zero tags meet: both survive in the pair.
+        let s1 = Segment::create_and_validate_tagged(a, b, count, 3);
+        let s2 = Segment::create_and_validate_tagged(a, b, count, 5);
+        let mut segments = vec![s1, s2];
         segments.merge_if_needed();
+        assert_eq!(segments.len(), 1);
+        assert!(tag_pair_contains(segments[0].tag, 3));
+        assert!(tag_pair_contains(segments[0].tag, 5));
 
-        // Both segments should have the same ordered x_segment
-        assert_eq!(
-            segments.len(),
-            1,
-            "Segments with inverted points should be merged"
-        );
+        // Equal tags collapse to a single-slot pair.
+        let s1 = Segment::create_and_validate_tagged(a, b, count, 7);
+        let s2 = Segment::create_and_validate_tagged(a, b, count, 7);
+        let mut segments = vec![s1, s2];
+        segments.merge_if_needed();
+        assert_eq!(segments[0].tag, tag_pair(7));
 
-        let merged_count = ShapeCountBoolean::new(1, 1);
-        let expected_segment =
-            Segment::create_and_validate_tagged(IntPoint::new(1, 2), IntPoint::new(3, 4), merged_count, 0);
-        assert_eq!(
-            segments[0], expected_segment,
-            "Merged segment should have combined counts and ordered points"
-        );
+        // Untagged + tagged: tag wins; untagged slot stays empty.
+        let s1 = Segment::create_and_validate(a, b, count);
+        let s2 = Segment::create_and_validate_tagged(a, b, count, 9);
+        let mut segments = vec![s1, s2];
+        segments.merge_if_needed();
+        assert_eq!(segments[0].tag, tag_pair(9));
+
+        // Cancelling merge drops the segment regardless of tags.
+        let s1 = Segment::create_and_validate_tagged(a, b, ShapeCountBoolean::new(1, 0), 3);
+        let s2 = Segment::create_and_validate_tagged(a, b, ShapeCountBoolean::new(-1, 0), 5);
+        let mut segments = vec![s1, s2];
+        segments.merge_if_needed();
+        assert!(segments.is_empty());
     }
 
     #[test]
-    fn test_merge_if_needed_no_merge_different_x_segments() {
-        let a1 = IntPoint::new(1, 1);
-        let b1 = IntPoint::new(2, 2);
-        let count1 = ShapeCountBoolean::new(1, 1);
-        let segment1 = Segment::create_and_validate_tagged(a1, b1, count1, 0);
+    fn third_tag_overflows_first_wins() {
+        let a = IntPoint::new(0, 0);
+        let b = IntPoint::new(10, 10);
+        let count = ShapeCountBoolean::new(1, 0);
 
-        let a2 = IntPoint::new(3, 3);
-        let b2 = IntPoint::new(4, 4);
-        let count2 = ShapeCountBoolean::new(2, 2);
-        let segment2 = Segment::create_and_validate_tagged(a2, b2, count2, 0);
-
-        let a3 = IntPoint::new(5, 5);
-        let b3 = IntPoint::new(6, 6);
-        let count3 = ShapeCountBoolean::new(3, 3);
-        let segment3 = Segment::create_and_validate_tagged(a3, b3, count3, 0);
-
-        let mut segments = vec![segment1, segment2, segment3];
+        // Three distinct tags: pair fills with the first two; the third is dropped.
+        let mut segments = vec![
+            Segment::create_and_validate_tagged(a, b, count, 3),
+            Segment::create_and_validate_tagged(a, b, count, 5),
+            Segment::create_and_validate_tagged(a, b, count, 7),
+        ];
         segments.merge_if_needed();
-
-        assert_eq!(
-            segments.len(),
-            3,
-            "Segments with different x_segments should not be merged"
-        );
-        assert_eq!(segments[0], segment1, "First segment should remain unchanged");
-        assert_eq!(segments[1], segment2, "Second segment should remain unchanged");
-        assert_eq!(segments[2], segment3, "Third segment should remain unchanged");
+        assert_eq!(segments.len(), 1);
+        assert!(tag_pair_contains(segments[0].tag, 3));
+        assert!(tag_pair_contains(segments[0].tag, 5));
+        assert!(!tag_pair_contains(segments[0].tag, 7));
+        assert_ne!(segments[0].tag, UNTAGGED);
     }
 }

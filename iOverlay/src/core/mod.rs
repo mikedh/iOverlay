@@ -11,4 +11,5 @@ pub mod predicate;
 pub mod relate;
 pub mod simplify;
 pub mod solver;
-pub mod tagged;
+#[cfg(test)]
+mod tagged;

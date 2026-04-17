@@ -323,6 +323,7 @@ impl FillHandler<ShapeCountBoolean> for WithinHandler {
 mod tests {
     use super::*;
     use crate::geom::x_segment::XSegment;
+    use crate::segm::segment::UNTAGGED;
 
     fn make_segment(ax: i32, ay: i32, bx: i32, by: i32, subj: i32, clip: i32) -> Segment<ShapeCountBoolean> {
         Segment {
@@ -331,7 +332,7 @@ mod tests {
                 b: IntPoint::new(bx, by),
             },
             count: ShapeCountBoolean { subj, clip },
-            tag: 0,
+            tag: UNTAGGED,
         }
     }
 

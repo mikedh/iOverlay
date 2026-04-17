@@ -19,18 +19,84 @@ pub const BOTH_BOTTOM: SegmentFill = SUBJ_BOTTOM | CLIP_BOTTOM;
 
 pub const ALL: SegmentFill = SUBJ_BOTH | CLIP_BOTH;
 
+/// Per-segment source-tag slot. Holds up to two distinct non-zero
+/// tags — `0` is the untagged sentinel; both slots zero means the
+/// segment carries no tag. When the boolean engine merges two
+/// segments whose `x_segment` coincides, tags from both inputs are
+/// unioned into the pair so downstream consumers can pick whichever
+/// matches their ring-local context (see merge semantics below).
+///
+/// A third distinct tag overflows silently (first-wins). In practice
+/// the merge points are pairwise coincidences; three distinct tagged
+/// sources producing the *same* `x_segment` with a surviving winding
+/// count is geometrically pathological.
+pub type TagPair = [u16; 2];
+
+/// The untagged sentinel pair.
+pub const UNTAGGED: TagPair = [0, 0];
+
+/// Build a pair holding a single tag (or `UNTAGGED` if `t == 0`).
+#[inline(always)]
+pub const fn tag_pair(t: u16) -> TagPair {
+    [t, 0]
+}
+
+/// `true` iff `t` (non-zero) appears in either slot of `pair`.
+#[inline]
+pub fn tag_pair_contains(pair: TagPair, t: u16) -> bool {
+    t != 0 && (pair[0] == t || pair[1] == t)
+}
+
+/// Union `src` into `dst`. Already-present tags are skipped; new tags
+/// fill the first empty slot. A third distinct tag is dropped — the
+/// existing two win (first-wins on overflow).
+#[inline]
+pub fn tag_pair_union(dst: &mut TagPair, src: TagPair) {
+    for &t in &src {
+        if t == 0 || tag_pair_contains(*dst, t) {
+            continue;
+        }
+        if dst[0] == 0 {
+            dst[0] = t;
+        } else if dst[1] == 0 {
+            dst[1] = t;
+        }
+        // else: third tag silently dropped — see `TagPair` docs.
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Segment<C> {
     pub(crate) x_segment: XSegment,
     pub(crate) count: C,
-    /// User-supplied edge tag. Survives sort, split, and merge — both
-    /// halves of a split segment inherit the parent's tag. Default 0.
-    pub tag: u16,
+    /// Per-edge source-tag pair. See [`TagPair`].
+    pub tag: TagPair,
 }
 
 impl<C: WindingCount> Segment<C> {
+    /// Backward-compatible untagged constructor. Equivalent to
+    /// [`Self::create_and_validate_tagged`] with `tag = 0` — the
+    /// untagged sentinel. Lets every upstream (non-fork) call site
+    /// stay byte-identical to upstream `iOverlay`, shrinking the fork
+    /// diff on `merge.rs`, `build.rs`, `predicate.rs`, `subject.rs`,
+    /// and `string/overlay.rs`.
+    #[inline(always)]
+    pub fn create_and_validate(a: IntPoint, b: IntPoint, count: C) -> Self {
+        Self::with_tag_pair(a, b, count, UNTAGGED)
+    }
+
+    /// Tagged constructor taking a single `u16` — the common case for
+    /// external callers (rmesh's `discretize`, `boolean`, `project`).
     #[inline(always)]
     pub fn create_and_validate_tagged(a: IntPoint, b: IntPoint, count: C, tag: u16) -> Self {
+        Self::with_tag_pair(a, b, count, tag_pair(tag))
+    }
+
+    /// Internal constructor taking a full `TagPair`. Used by the split
+    /// solver to propagate the parent segment's pair onto its children
+    /// unchanged (including any second tag inherited from a prior merge).
+    #[inline(always)]
+    pub(crate) fn with_tag_pair(a: IntPoint, b: IntPoint, count: C, tag: TagPair) -> Self {
         if a < b {
             Self {
                 x_segment: XSegment { a, b },
