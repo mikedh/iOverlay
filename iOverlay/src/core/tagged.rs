@@ -25,8 +25,8 @@ mod tests {
             ..Default::default()
         }, Default::default());
         for (rect, tag) in [
-            ([IntPoint::new(0,0), IntPoint::new(50,0), IntPoint::new(50,100), IntPoint::new(0,100)], 1u16),
-            ([IntPoint::new(200,0), IntPoint::new(300,0), IntPoint::new(300,100), IntPoint::new(200,100)], 2u16),
+            ([IntPoint::new(0,0), IntPoint::new(50,0), IntPoint::new(50,100), IntPoint::new(0,100)], 1u32),
+            ([IntPoint::new(200,0), IntPoint::new(300,0), IntPoint::new(300,100), IntPoint::new(200,100)], 2u32),
         ] {
             for i in 0..4 {
                 let a = rect[i];
@@ -43,7 +43,7 @@ mod tests {
         assert_eq!(tags.len(), 2);
         // Each shape's outer contour carries exactly the tag of its
         // source rectangle. Edges report a `TagPair`; probe either slot.
-        let shape_has_tag = |shape_idx: usize, needle: u16| -> bool {
+        let shape_has_tag = |shape_idx: usize, needle: u32| -> bool {
             tags[shape_idx].iter().any(|c| c.iter().any(|&pair| tag_pair_contains(pair, needle)))
         };
         let found_1 = shape_has_tag(0, 1) || shape_has_tag(1, 1);

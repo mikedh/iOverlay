@@ -13,7 +13,7 @@ use crate::segm::segment::{Segment, tag_pair};
 /// outline output can distinguish "this came from input edge N" from
 /// "this is a constructed corner fillet". The rmesh fork mirrors this
 /// constant in `path/buffer/discretize.rs::JOIN_TAG`.
-pub const JOIN_TAG_SENTINEL: u16 = u16::MAX;
+pub const JOIN_TAG_SENTINEL: u32 = u32::MAX;
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::marker::PhantomData;
@@ -33,7 +33,7 @@ trait OutlineBuild<P: FloatPointCompatible<T>, T: FloatNumber> {
     fn build_and_tag(
         &self,
         path: &[P],
-        tags: &[u16],
+        tags: &[u32],
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     );
@@ -97,7 +97,7 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineBuil
     pub fn build_and_tag(
         &self,
         path: &[P],
-        tags: &[u16],
+        tags: &[u32],
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
@@ -135,7 +135,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> OutlineBu
     fn build_and_tag(
         &self,
         path: &[P],
-        tags: &[u16],
+        tags: &[u32],
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
@@ -175,7 +175,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
     fn build_and_tag(
         &self,
         path: &[P],
-        tags: &[u16],
+        tags: &[u32],
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
@@ -193,7 +193,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
     fn build_impl(
         &self,
         path: &[P],
-        tags: Option<&[u16]>,
+        tags: Option<&[u32]>,
         adapter: &FloatPointAdapter<P, T>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
@@ -215,14 +215,14 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
             None => return,
         };
 
-        let edge_tag = |edge_index: usize| -> u16 {
+        let edge_tag = |edge_index: usize| -> u32 {
             tags.map_or(0, |t| t[edge_index % n])
         };
         // `apply_tag` owns the &mut Vec through its argument, so the
         // closure itself only captures the boolean Option::is_some.
         let has_tags = tags.is_some();
         let apply_tag =
-            |segments: &mut Vec<Segment<ShapeCountBoolean>>, mark: usize, tag: u16| {
+            |segments: &mut Vec<Segment<ShapeCountBoolean>>, mark: usize, tag: u32| {
                 if has_tags {
                     let pair = tag_pair(tag);
                     for seg in &mut segments[mark..] {

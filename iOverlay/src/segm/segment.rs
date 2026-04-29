@@ -30,20 +30,26 @@ pub const ALL: SegmentFill = SUBJ_BOTH | CLIP_BOTH;
 /// the merge points are pairwise coincidences; three distinct tagged
 /// sources producing the *same* `x_segment` with a surviving winding
 /// count is geometrically pathological.
-pub type TagPair = [u16; 2];
+///
+/// Width: `u32`. Lifts the 65k segment ceiling on tagged callers
+/// (rmesh's `Path2D::offset` / boolean ops). The tag never participates
+/// in the integer-grid arithmetic — it's pure provenance metadata that
+/// survives the split / merge passes — so widening it is a no-op for
+/// the boolean engine itself.
+pub type TagPair = [u32; 2];
 
 /// The untagged sentinel pair.
 pub const UNTAGGED: TagPair = [0, 0];
 
 /// Build a pair holding a single tag (or `UNTAGGED` if `t == 0`).
 #[inline(always)]
-pub const fn tag_pair(t: u16) -> TagPair {
+pub const fn tag_pair(t: u32) -> TagPair {
     [t, 0]
 }
 
 /// `true` iff `t` (non-zero) appears in either slot of `pair`.
 #[inline]
-pub fn tag_pair_contains(pair: TagPair, t: u16) -> bool {
+pub fn tag_pair_contains(pair: TagPair, t: u32) -> bool {
     t != 0 && (pair[0] == t || pair[1] == t)
 }
 
@@ -85,10 +91,10 @@ impl<C: WindingCount> Segment<C> {
         Self::with_tag_pair(a, b, count, UNTAGGED)
     }
 
-    /// Tagged constructor taking a single `u16` — the common case for
+    /// Tagged constructor taking a single `u32` — the common case for
     /// external callers (rmesh's `discretize`, `boolean`, `project`).
     #[inline(always)]
-    pub fn create_and_validate_tagged(a: IntPoint, b: IntPoint, count: C, tag: u16) -> Self {
+    pub fn create_and_validate_tagged(a: IntPoint, b: IntPoint, count: C, tag: u32) -> Self {
         Self::with_tag_pair(a, b, count, tag_pair(tag))
     }
 
