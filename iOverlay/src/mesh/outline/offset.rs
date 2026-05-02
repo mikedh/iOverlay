@@ -22,7 +22,7 @@ use i_shape::float::int_area::IntArea;
 use i_shape::float::simple::SimplifyContour;
 use i_shape::source::resource::ShapeResource;
 
-pub trait OutlineOffset<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
+pub trait OutlineOffset<P: FloatPointCompatible> {
     /// Generates an outline shapes for contours, or shapes.
     ///
     /// - `style`: Defines the outline properties, including offset, and joins.
@@ -30,13 +30,13 @@ pub trait OutlineOffset<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     /// # Returns
     /// A collection of `Shapes<P>` representing the outline geometry.
     /// Note: Outer boundary paths have a counterclockwise order, and holes have a clockwise order.
-    fn outline(&self, style: &OutlineStyle<T>) -> Shapes<P>;
+    fn outline(&self, style: &OutlineStyle<P::Scalar>) -> Shapes<P>;
 
     /// Generates outline contours directly into a flat buffer.
     ///
     /// - `style`: Defines the outline properties, including offset, and joins.
     /// - `output`: Destination buffer that receives resulting contours. Existing contents are replaced.
-    fn outline_into(&self, style: &OutlineStyle<T>, output: &mut FloatFlatContoursBuffer<P>);
+    fn outline_into(&self, style: &OutlineStyle<P::Scalar>, output: &mut FloatFlatContoursBuffer<P>);
 
     /// Generates an outline shapes for contours, or shapes with optional filtering.
     ///
@@ -46,7 +46,11 @@ pub trait OutlineOffset<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     /// # Returns
     /// A collection of `Shapes<P>` representing the outline geometry.
     /// Note: Outer boundary paths have a **main_direction** order, and holes have an opposite to **main_direction** order.
-    fn outline_custom(&self, style: &OutlineStyle<T>, options: OverlayOptions<T>) -> Shapes<P>;
+    fn outline_custom(
+        &self,
+        style: &OutlineStyle<P::Scalar>,
+        options: OverlayOptions<P::Scalar>,
+    ) -> Shapes<P>;
 
     /// Generates outline contours directly into a flat buffer with optional filtering.
     ///
@@ -55,8 +59,8 @@ pub trait OutlineOffset<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     /// - `output`: Destination buffer that receives resulting contours. Existing contents are replaced.
     fn outline_custom_into(
         &self,
-        style: &OutlineStyle<T>,
-        options: OverlayOptions<T>,
+        style: &OutlineStyle<P::Scalar>,
+        options: OverlayOptions<P::Scalar>,
         output: &mut FloatFlatContoursBuffer<P>,
     );
 
@@ -70,8 +74,8 @@ pub trait OutlineOffset<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     /// Note: Outer boundary paths have a counterclockwise order, and holes have a clockwise order.
     fn outline_fixed_scale(
         &self,
-        style: &OutlineStyle<T>,
-        scale: T,
+        style: &OutlineStyle<P::Scalar>,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError>;
 
     /// Generates outline contours directly into a flat buffer with fixed float-to-integer scale.
@@ -81,8 +85,8 @@ pub trait OutlineOffset<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     /// - `output`: Destination buffer that receives resulting contours. Existing contents are replaced on success.
     fn outline_fixed_scale_into(
         &self,
-        style: &OutlineStyle<T>,
-        scale: T,
+        style: &OutlineStyle<P::Scalar>,
+        scale: P::Scalar,
         output: &mut FloatFlatContoursBuffer<P>,
     ) -> Result<(), FixedScaleOverlayError>;
 
@@ -97,9 +101,9 @@ pub trait OutlineOffset<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     /// Note: Outer boundary paths have a **main_direction** order, and holes have an opposite to **main_direction** order.
     fn outline_custom_fixed_scale(
         &self,
-        style: &OutlineStyle<T>,
-        options: OverlayOptions<T>,
-        scale: T,
+        style: &OutlineStyle<P::Scalar>,
+        options: OverlayOptions<P::Scalar>,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError>;
 
     /// Generates outline contours directly into a flat buffer with optional filtering and fixed scaling.
@@ -110,28 +114,31 @@ pub trait OutlineOffset<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     /// - `output`: Destination buffer that receives resulting contours. Existing contents are replaced on success.
     fn outline_custom_fixed_scale_into(
         &self,
-        style: &OutlineStyle<T>,
-        options: OverlayOptions<T>,
-        scale: T,
+        style: &OutlineStyle<P::Scalar>,
+        options: OverlayOptions<P::Scalar>,
+        scale: P::Scalar,
         output: &mut FloatFlatContoursBuffer<P>,
     ) -> Result<(), FixedScaleOverlayError>;
 }
 
-impl<S, P, T> OutlineOffset<P, T> for S
+impl<S, P> OutlineOffset<P> for S
 where
     S: ShapeResource<P>,
-    P: FloatPointCompatible<Scalar = T> + 'static,
-    T: FloatNumber + 'static,
+    P: FloatPointCompatible + 'static,
 {
-    fn outline(&self, style: &OutlineStyle<T>) -> Shapes<P> {
+    fn outline(&self, style: &OutlineStyle<P::Scalar>) -> Shapes<P> {
         self.outline_custom(style, Default::default())
     }
 
-    fn outline_into(&self, style: &OutlineStyle<T>, output: &mut FloatFlatContoursBuffer<P>) {
+    fn outline_into(&self, style: &OutlineStyle<P::Scalar>, output: &mut FloatFlatContoursBuffer<P>) {
         self.outline_custom_into(style, Default::default(), output)
     }
 
-    fn outline_custom(&self, style: &OutlineStyle<T>, options: OverlayOptions<T>) -> Shapes<P> {
+    fn outline_custom(
+        &self,
+        style: &OutlineStyle<P::Scalar>,
+        options: OverlayOptions<P::Scalar>,
+    ) -> Shapes<P> {
         match OutlineSolver::prepare(self, style) {
             Some(solver) => solver.build(self, options),
             None => vec![],
@@ -140,8 +147,8 @@ where
 
     fn outline_custom_into(
         &self,
-        style: &OutlineStyle<T>,
-        options: OverlayOptions<T>,
+        style: &OutlineStyle<P::Scalar>,
+        options: OverlayOptions<P::Scalar>,
         output: &mut FloatFlatContoursBuffer<P>,
     ) {
         match OutlineSolver::prepare(self, style) {
@@ -152,16 +159,16 @@ where
 
     fn outline_fixed_scale(
         &self,
-        style: &OutlineStyle<T>,
-        scale: T,
+        style: &OutlineStyle<P::Scalar>,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError> {
         self.outline_custom_fixed_scale(style, Default::default(), scale)
     }
 
     fn outline_fixed_scale_into(
         &self,
-        style: &OutlineStyle<T>,
-        scale: T,
+        style: &OutlineStyle<P::Scalar>,
+        scale: P::Scalar,
         output: &mut FloatFlatContoursBuffer<P>,
     ) -> Result<(), FixedScaleOverlayError> {
         self.outline_custom_fixed_scale_into(style, Default::default(), scale, output)
@@ -169,9 +176,9 @@ where
 
     fn outline_custom_fixed_scale(
         &self,
-        style: &OutlineStyle<T>,
-        options: OverlayOptions<T>,
-        scale: T,
+        style: &OutlineStyle<P::Scalar>,
+        options: OverlayOptions<P::Scalar>,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError> {
         let s = FixedScaleOverlayError::validate_scale(scale)?;
         let mut solver = match OutlineSolver::prepare(self, style) {
@@ -184,9 +191,9 @@ where
 
     fn outline_custom_fixed_scale_into(
         &self,
-        style: &OutlineStyle<T>,
-        options: OverlayOptions<T>,
-        scale: T,
+        style: &OutlineStyle<P::Scalar>,
+        options: OverlayOptions<P::Scalar>,
+        scale: P::Scalar,
         output: &mut FloatFlatContoursBuffer<P>,
     ) -> Result<(), FixedScaleOverlayError> {
         let s = FixedScaleOverlayError::validate_scale(scale)?;
@@ -203,15 +210,15 @@ where
     }
 }
 
-struct OutlineSolver<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
-    outer_builder: OutlineBuilder<P, T>,
-    inner_builder: OutlineBuilder<P, T>,
+struct OutlineSolver<P: FloatPointCompatible> {
+    outer_builder: OutlineBuilder<P>,
+    inner_builder: OutlineBuilder<P>,
     adapter: FloatPointAdapter<P>,
     points_count: usize,
 }
 
-impl<P: FloatPointCompatible<Scalar = T> + 'static, T: FloatNumber + 'static> OutlineSolver<P, T> {
-    fn prepare<S: ShapeResource<P>>(source: &S, style: &OutlineStyle<T>) -> Option<Self> {
+impl<P: FloatPointCompatible + 'static> OutlineSolver<P> {
+    fn prepare<S: ShapeResource<P>>(source: &S, style: &OutlineStyle<P::Scalar>) -> Option<Self> {
         let (points_count, paths_count) = {
             let mut points_count = 0;
             let mut paths_count = 0;
@@ -227,8 +234,8 @@ impl<P: FloatPointCompatible<Scalar = T> + 'static, T: FloatNumber + 'static> Ou
         }
 
         let join = style.join.clone().normalize();
-        let outer_builder = OutlineBuilder::new(-style.outer_offset, &join);
-        let inner_builder = OutlineBuilder::new(-style.inner_offset, &join);
+        let outer_builder: OutlineBuilder<P> = OutlineBuilder::new(-style.outer_offset, &join);
+        let inner_builder: OutlineBuilder<P> = OutlineBuilder::new(-style.inner_offset, &join);
 
         let outer_radius = style.outer_offset;
         let inner_radius = style.inner_offset;
@@ -252,18 +259,18 @@ impl<P: FloatPointCompatible<Scalar = T> + 'static, T: FloatNumber + 'static> Ou
     }
 
     fn apply_scale(&mut self, scale: f64) -> Result<(), FixedScaleOverlayError> {
-        let s = T::from_float(scale);
+        let s = P::Scalar::from_float(scale);
         if self.adapter.dir_scale < s {
             return Err(FixedScaleOverlayError::ScaleTooLarge);
         }
 
         self.adapter.dir_scale = s;
-        self.adapter.inv_scale = T::from_float(1.0 / scale);
+        self.adapter.inv_scale = P::Scalar::from_float(1.0 / scale);
 
         Ok(())
     }
 
-    fn build_overlay<S: ShapeResource<P>>(&self, source: &S, options: OverlayOptions<T>) -> Overlay {
+    fn build_overlay<S: ShapeResource<P>>(&self, source: &S, options: OverlayOptions<P::Scalar>) -> Overlay {
         let total_capacity = self.outer_builder.capacity(self.points_count);
         let mut overlay = Overlay::new_custom(
             total_capacity,
@@ -313,7 +320,7 @@ impl<P: FloatPointCompatible<Scalar = T> + 'static, T: FloatNumber + 'static> Ou
         overlay
     }
 
-    fn build<S: ShapeResource<P>>(self, source: &S, options: OverlayOptions<T>) -> Shapes<P> {
+    fn build<S: ShapeResource<P>>(self, source: &S, options: OverlayOptions<P::Scalar>) -> Shapes<P> {
         let preserve_output_collinear = options.preserve_output_collinear;
         let clean_result = options.clean_result;
         let mut overlay = self.build_overlay(source, options);
@@ -335,7 +342,7 @@ impl<P: FloatPointCompatible<Scalar = T> + 'static, T: FloatNumber + 'static> Ou
     fn build_into<S: ShapeResource<P>>(
         self,
         source: &S,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         output: &mut FloatFlatContoursBuffer<P>,
     ) {
         let preserve_output_collinear = options.preserve_output_collinear;

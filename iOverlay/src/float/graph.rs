@@ -7,7 +7,6 @@ use crate::core::graph::OverlayGraph;
 use crate::core::overlay_rule::OverlayRule;
 use i_float::adapter::FloatPointAdapter;
 use i_float::float::compatible::FloatPointCompatible;
-use i_float::float::number::FloatNumber;
 use i_shape::base::data::Shapes;
 use i_shape::float::adapter::ShapesToFloat;
 use i_shape::float::despike::DeSpikeContour;
@@ -16,13 +15,13 @@ use i_shape::float::simple::SimplifyContour;
 /// The `FloatOverlayGraph` struct represents an overlay graph with floating point precision,
 /// providing methods to extract geometric shapes from the graph after applying boolean operations.
 /// [More information](https://ishape-rust.github.io/iShape-js/overlay/overlay_graph/overlay_graph.html) about Overlay Graph.
-pub struct FloatOverlayGraph<'a, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
+pub struct FloatOverlayGraph<'a, P: FloatPointCompatible> {
     pub graph: OverlayGraph<'a>,
     pub adapter: FloatPointAdapter<P>,
     clean_result: bool,
 }
 
-impl<'a, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> FloatOverlayGraph<'a, P, T> {
+impl<'a, P: FloatPointCompatible> FloatOverlayGraph<'a, P> {
     #[inline]
     pub(crate) fn new(graph: OverlayGraph<'a>, adapter: FloatPointAdapter<P>, clean_result: bool) -> Self {
         Self {

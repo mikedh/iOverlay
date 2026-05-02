@@ -4,7 +4,6 @@ use crate::core::relate::PredicateOverlay;
 use crate::core::solver::Solver;
 use i_float::adapter::FloatPointAdapter;
 use i_float::float::compatible::FloatPointCompatible;
-use i_float::float::number::FloatNumber;
 use i_shape::source::resource::ShapeResource;
 
 /// Float-coordinate wrapper for spatial predicate evaluation.
@@ -27,12 +26,12 @@ use i_shape::source::resource::ShapeResource;
 ///
 /// For a more ergonomic API, see the [`FloatRelate`] trait which provides
 /// methods directly on shape types.
-pub struct FloatPredicateOverlay<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
+pub struct FloatPredicateOverlay<P: FloatPointCompatible> {
     pub(crate) overlay: PredicateOverlay,
     pub(crate) adapter: FloatPointAdapter<P>,
 }
 
-impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> FloatPredicateOverlay<P, T> {
+impl<P: FloatPointCompatible> FloatPredicateOverlay<P> {
     /// Creates a new predicate overlay with a pre-configured adapter.
     ///
     /// Use this when you need fixed-scale precision via `FloatPointAdapter::with_scale()`.
@@ -200,11 +199,10 @@ impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> FloatPredicateOverlay<
 /// - `Vec<[f64; 2]>` - single contour
 /// - `Vec<Vec<[f64; 2]>>` - multiple contours (shape with holes)
 /// - `Vec<Vec<Vec<[f64; 2]>>>` - multiple shapes
-pub trait FloatRelate<R1, P, T>
+pub trait FloatRelate<R1, P>
 where
     R1: ShapeResource<P> + ?Sized,
-    P: FloatPointCompatible<Scalar = T>,
-    T: FloatNumber,
+    P: FloatPointCompatible,
 {
     /// Returns `true` if this shape intersects with another (shares any point).
     ///
@@ -247,12 +245,11 @@ where
     fn covers(&self, other: &R1) -> bool;
 }
 
-impl<R0, R1, P, T> FloatRelate<R1, P, T> for R0
+impl<R0, R1, P> FloatRelate<R1, P> for R0
 where
     R0: ShapeResource<P> + ?Sized,
     R1: ShapeResource<P> + ?Sized,
-    P: FloatPointCompatible<Scalar = T>,
-    T: FloatNumber,
+    P: FloatPointCompatible,
 {
     #[inline]
     fn intersects(&self, other: &R1) -> bool {

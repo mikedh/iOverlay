@@ -87,9 +87,7 @@ impl<P: FloatPointCompatible + 'static> StrokeBuilder<P> {
     }
 }
 
-impl<J: JoinBuilder<P>, P: FloatPointCompatible> StrokeBuild<P>
-    for Builder<J, P>
-{
+impl<J: JoinBuilder<P>, P: FloatPointCompatible> StrokeBuild<P> for Builder<J, P> {
     #[inline]
     fn build(
         &self,

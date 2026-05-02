@@ -14,7 +14,7 @@ use i_float::float::compatible::FloatPointCompatible;
 use i_float::float::number::FloatNumber;
 use i_float::float::vector::FloatPointMath;
 
-trait OutlineBuild<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
+trait OutlineBuild<P: FloatPointCompatible> {
     fn build(
         &self,
         path: &[P],
@@ -23,24 +23,24 @@ trait OutlineBuild<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     );
 
     fn capacity(&self, points_count: usize) -> usize;
-    fn additional_offset(&self, radius: T) -> T;
+    fn additional_offset(&self, radius: P::Scalar) -> P::Scalar;
 }
 
-pub(super) struct OutlineBuilder<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
-    builder: Box<dyn OutlineBuild<P, T>>,
+pub(super) struct OutlineBuilder<P: FloatPointCompatible> {
+    builder: Box<dyn OutlineBuild<P>>,
 }
 
-struct Builder<J: JoinBuilder<P, T>, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
+struct Builder<J: JoinBuilder<P>, P: FloatPointCompatible> {
     extend: bool,
-    radius: T,
+    radius: P::Scalar,
     join_builder: J,
     _phantom: PhantomData<P>,
 }
 
-impl<P: FloatPointCompatible<Scalar = T> + 'static, T: FloatNumber + 'static> OutlineBuilder<P, T> {
-    pub(super) fn new(radius: T, join: &LineJoin<T>) -> OutlineBuilder<P, T> {
-        let extend = radius > T::from_float(0.0);
-        let builder: Box<dyn OutlineBuild<P, T>> = {
+impl<P: FloatPointCompatible + 'static> OutlineBuilder<P> {
+    pub(super) fn new(radius: P::Scalar, join: &LineJoin<P::Scalar>) -> OutlineBuilder<P> {
+        let extend = radius > P::Scalar::from_float(0.0);
+        let builder: Box<dyn OutlineBuild<P>> = {
             match join {
                 LineJoin::Miter(ratio) => Box::new(Builder {
                     extend,
@@ -82,14 +82,12 @@ impl<P: FloatPointCompatible<Scalar = T> + 'static, T: FloatNumber + 'static> Ou
     }
 
     #[inline]
-    pub(super) fn additional_offset(&self, radius: T) -> T {
+    pub(super) fn additional_offset(&self, radius: P::Scalar) -> P::Scalar {
         self.builder.additional_offset(radius)
     }
 }
 
-impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> OutlineBuild<P, T>
-    for Builder<J, P, T>
-{
+impl<J: JoinBuilder<P>, P: FloatPointCompatible> OutlineBuild<P> for Builder<J, P> {
     #[inline]
     fn build(
         &self,
@@ -110,12 +108,12 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> 
     }
 
     #[inline]
-    fn additional_offset(&self, radius: T) -> T {
+    fn additional_offset(&self, radius: P::Scalar) -> P::Scalar {
         self.join_builder.additional_offset(radius)
     }
 }
 
-impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> Builder<J, P, T> {
+impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
     fn build(
         &self,
         path: &[P],
@@ -152,8 +150,8 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> 
     #[inline]
     fn feed_join(
         &self,
-        s0: &OffsetSection<P, T>,
-        s1: &OffsetSection<P, T>,
+        s0: &OffsetSection<P>,
+        s1: &OffsetSection<P>,
         adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
@@ -175,13 +173,9 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> 
     }
 }
 
-impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> OffsetSection<P, T> {
+impl<P: FloatPointCompatible> OffsetSection<P> {
     #[inline]
-    fn new(radius: T, s: &UniqueSegment, adapter: &FloatPointAdapter<P>) -> Self
-    where
-        P: FloatPointCompatible<Scalar = T>,
-        T: FloatNumber,
-    {
+    fn new(radius: P::Scalar, s: &UniqueSegment, adapter: &FloatPointAdapter<P>) -> Self {
         let a = adapter.int_to_float(&s.a);
         let b = adapter.int_to_float(&s.b);
         let ab = FloatPointMath::sub(&b, &a);
@@ -199,7 +193,6 @@ impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> OffsetSection<P, T> {
             a_top,
             b_top,
             dir,
-            _phantom: Default::default(),
         }
     }
 }

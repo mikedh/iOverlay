@@ -26,9 +26,7 @@ impl<P: FloatPointCompatible> CapBuilder<P> {
             LineCap::Custom(points) => Some(Self::custom_points(points.to_vec(), radius)),
         };
 
-        Self {
-            points,
-        }
+        Self { points }
     }
 
     pub(super) fn round_points(angle: P::Scalar, r: P::Scalar) -> Vec<P> {

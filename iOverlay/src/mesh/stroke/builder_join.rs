@@ -117,7 +117,7 @@ impl<T: FloatNumber> MiterJoinBuilder<T> {
     }
 }
 
-impl<T: FloatNumber, P: FloatPointCompatible<Scalar = T>> JoinBuilder<P> for MiterJoinBuilder<T> {
+impl<P: FloatPointCompatible> JoinBuilder<P> for MiterJoinBuilder<P::Scalar> {
     fn add_join(
         &self,
         s0: &Section<P>,
@@ -126,13 +126,13 @@ impl<T: FloatNumber, P: FloatPointCompatible<Scalar = T>> JoinBuilder<P> for Mit
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         let cross_product = FloatPointMath::cross_product(&s0.dir, &s1.dir);
-        if cross_product.abs() < T::from_float(0.0001) {
+        if cross_product.abs() < P::Scalar::from_float(0.0001) {
             BevelJoinBuilder::join_top(s0, s1, adapter, segments);
             BevelJoinBuilder::join_bot(s0, s1, adapter, segments);
             return;
         }
 
-        let turn = cross_product > T::from_float(0.0);
+        let turn = cross_product > P::Scalar::from_float(0.0);
 
         let dot_product = FloatPointMath::dot_product(&s0.dir, &s1.dir);
 
@@ -211,7 +211,7 @@ impl<T: FloatNumber, P: FloatPointCompatible<Scalar = T>> JoinBuilder<P> for Mit
     }
 
     #[inline]
-    fn additional_offset(&self, _radius: T) -> T {
+    fn additional_offset(&self, _radius: P::Scalar) -> P::Scalar {
         self.max_offset
     }
 }

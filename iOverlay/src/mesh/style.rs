@@ -114,10 +114,10 @@ impl<P: FloatPointCompatible> StrokeStyle<P> {
     }
 }
 
-impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> Default for StrokeStyle<P> {
+impl<P: FloatPointCompatible> Default for StrokeStyle<P> {
     fn default() -> Self {
         Self {
-            width: T::from_float(1.0),
+            width: P::Scalar::from_float(1.0),
             start_cap: LineCap::Butt,
             end_cap: LineCap::Butt,
             join: LineJoin::Bevel,

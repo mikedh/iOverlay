@@ -44,9 +44,7 @@ pub(crate) trait SectionToSegment<P: FloatPointCompatible> {
     fn add_section(&mut self, section: &Section<P>, adapter: &FloatPointAdapter<P>);
 }
 
-impl<P: FloatPointCompatible> SectionToSegment<P>
-    for Vec<Segment<ShapeCountBoolean>>
-{
+impl<P: FloatPointCompatible> SectionToSegment<P> for Vec<Segment<ShapeCountBoolean>> {
     fn add_section(&mut self, section: &Section<P>, adapter: &FloatPointAdapter<P>) {
         let a_top = adapter.float_to_int(&section.a_top);
         let b_top = adapter.float_to_int(&section.b_top);

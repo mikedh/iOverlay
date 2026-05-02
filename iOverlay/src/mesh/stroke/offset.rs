@@ -247,7 +247,7 @@ struct StrokeSolver<P: FloatPointCompatible> {
     points_count: usize,
 }
 
-impl<P: 'static + FloatPointCompatible<Scalar = T>, T: 'static + FloatNumber> StrokeSolver<P> {
+impl<P: 'static + FloatPointCompatible> StrokeSolver<P> {
     fn prepare<S: ShapeResource<P>>(source: &S, style: StrokeStyle<P>) -> Option<Self> {
         let mut paths_count = 0;
         let mut points_count = 0;
@@ -260,7 +260,7 @@ impl<P: 'static + FloatPointCompatible<Scalar = T>, T: 'static + FloatNumber> St
             return None;
         }
 
-        let r = T::from_float(0.5 * style.width.to_f64());
+        let r = P::Scalar::from_float(0.5 * style.width.to_f64());
         let builder = StrokeBuilder::new(style);
         let a = builder.additional_offset(r);
 
@@ -277,14 +277,14 @@ impl<P: 'static + FloatPointCompatible<Scalar = T>, T: 'static + FloatNumber> St
         })
     }
 
-    fn apply_scale(&mut self, scale: T) -> Result<(), FixedScaleOverlayError> {
+    fn apply_scale(&mut self, scale: P::Scalar) -> Result<(), FixedScaleOverlayError> {
         let s = FixedScaleOverlayError::validate_scale(scale)?;
         if self.adapter.dir_scale < scale {
             return Err(FixedScaleOverlayError::ScaleTooLarge);
         }
 
         self.adapter.dir_scale = scale;
-        self.adapter.inv_scale = T::from_float(1.0 / s);
+        self.adapter.inv_scale = P::Scalar::from_float(1.0 / s);
 
         Ok(())
     }
@@ -293,7 +293,7 @@ impl<P: 'static + FloatPointCompatible<Scalar = T>, T: 'static + FloatNumber> St
         self,
         source: &S,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
     ) -> Shapes<P> {
         let ir = self.adapter.len_float_to_int(self.r).abs();
         if ir <= 1 {
@@ -333,7 +333,7 @@ impl<P: 'static + FloatPointCompatible<Scalar = T>, T: 'static + FloatNumber> St
         self,
         source: &S,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         output: &mut FloatFlatContoursBuffer<P>,
     ) {
         let ir = self.adapter.len_float_to_int(self.r).abs();
