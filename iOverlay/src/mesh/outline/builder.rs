@@ -14,33 +14,33 @@ use i_float::float::compatible::FloatPointCompatible;
 use i_float::float::number::FloatNumber;
 use i_float::float::vector::FloatPointMath;
 
-trait OutlineBuild<P: FloatPointCompatible<T>, T: FloatNumber> {
+trait OutlineBuild<P: FloatPointCompatible> {
     fn build(
         &self,
         path: &[P],
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     );
 
     fn capacity(&self, points_count: usize) -> usize;
-    fn additional_offset(&self, radius: T) -> T;
+    fn additional_offset(&self, radius: P::Scalar) -> P::Scalar;
 }
 
-pub(super) struct OutlineBuilder<P: FloatPointCompatible<T>, T: FloatNumber> {
-    builder: Box<dyn OutlineBuild<P, T>>,
+pub(super) struct OutlineBuilder<P: FloatPointCompatible> {
+    builder: Box<dyn OutlineBuild<P>>,
 }
 
-struct Builder<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> {
+struct Builder<J: JoinBuilder<P>, P: FloatPointCompatible> {
     extend: bool,
-    radius: T,
+    radius: P::Scalar,
     join_builder: J,
     _phantom: PhantomData<P>,
 }
 
-impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineBuilder<P, T> {
-    pub(super) fn new(radius: T, join: &LineJoin<T>) -> OutlineBuilder<P, T> {
-        let extend = radius > T::from_float(0.0);
-        let builder: Box<dyn OutlineBuild<P, T>> = {
+impl<P: FloatPointCompatible + 'static> OutlineBuilder<P> {
+    pub(super) fn new(radius: P::Scalar, join: &LineJoin<P::Scalar>) -> OutlineBuilder<P> {
+        let extend = radius > P::Scalar::from_float(0.0);
+        let builder: Box<dyn OutlineBuild<P>> = {
             match join {
                 LineJoin::Miter(ratio) => Box::new(Builder {
                     extend,
@@ -70,7 +70,7 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineBuil
     pub(super) fn build(
         &self,
         path: &[P],
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         self.builder.build(path, adapter, segments);
@@ -82,19 +82,17 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineBuil
     }
 
     #[inline]
-    pub(super) fn additional_offset(&self, radius: T) -> T {
+    pub(super) fn additional_offset(&self, radius: P::Scalar) -> P::Scalar {
         self.builder.additional_offset(radius)
     }
 }
 
-impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> OutlineBuild<P, T>
-    for Builder<J, P, T>
-{
+impl<J: JoinBuilder<P>, P: FloatPointCompatible> OutlineBuild<P> for Builder<J, P> {
     #[inline]
     fn build(
         &self,
         path: &[P],
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         if path.len() < 2 {
@@ -110,16 +108,16 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> OutlineBu
     }
 
     #[inline]
-    fn additional_offset(&self, radius: T) -> T {
+    fn additional_offset(&self, radius: P::Scalar) -> P::Scalar {
         self.join_builder.additional_offset(radius)
     }
 }
 
-impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J, P, T> {
+impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
     fn build(
         &self,
         path: &[P],
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         let iter = path.iter().map(|p| adapter.float_to_int(p));
@@ -152,9 +150,9 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
     #[inline]
     fn feed_join(
         &self,
-        s0: &OffsetSection<P, T>,
-        s1: &OffsetSection<P, T>,
-        adapter: &FloatPointAdapter<P, T>,
+        s0: &OffsetSection<P>,
+        s1: &OffsetSection<P>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         let vi = s1.b - s1.a;
@@ -175,13 +173,9 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
     }
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> OffsetSection<P, T> {
+impl<P: FloatPointCompatible> OffsetSection<P> {
     #[inline]
-    fn new(radius: T, s: &UniqueSegment, adapter: &FloatPointAdapter<P, T>) -> Self
-    where
-        P: FloatPointCompatible<T>,
-        T: FloatNumber,
-    {
+    fn new(radius: P::Scalar, s: &UniqueSegment, adapter: &FloatPointAdapter<P>) -> Self {
         let a = adapter.int_to_float(&s.a);
         let b = adapter.int_to_float(&s.b);
         let ab = FloatPointMath::sub(&b, &a);
@@ -199,7 +193,6 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> OffsetSection<P, T> {
             a_top,
             b_top,
             dir,
-            _phantom: Default::default(),
         }
     }
 }

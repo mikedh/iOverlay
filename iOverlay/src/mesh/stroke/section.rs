@@ -2,14 +2,12 @@ use crate::mesh::math::Math;
 use crate::segm::boolean::ShapeCountBoolean;
 use crate::segm::segment::Segment;
 use alloc::vec::Vec;
-use core::marker::PhantomData;
 use i_float::adapter::FloatPointAdapter;
 use i_float::float::compatible::FloatPointCompatible;
-use i_float::float::number::FloatNumber;
 use i_float::float::vector::FloatPointMath;
 
 #[derive(Debug, Clone)]
-pub(super) struct Section<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub(super) struct Section<P: FloatPointCompatible> {
     pub(super) a: P,
     pub(super) b: P,
     pub(super) a_top: P,
@@ -17,11 +15,10 @@ pub(super) struct Section<P: FloatPointCompatible<T>, T: FloatNumber> {
     pub(super) a_bot: P,
     pub(super) b_bot: P,
     pub(super) dir: P,
-    _phantom: PhantomData<T>,
 }
 
-impl<T: FloatNumber, P: FloatPointCompatible<T>> Section<P, T> {
-    pub(crate) fn new(radius: T, a: &P, b: &P) -> Self {
+impl<P: FloatPointCompatible> Section<P> {
+    pub(crate) fn new(radius: P::Scalar, a: &P, b: &P) -> Self {
         let dir = Math::normal(b, a);
         let t = Math::ortho_and_scale(&dir, radius);
 
@@ -39,17 +36,16 @@ impl<T: FloatNumber, P: FloatPointCompatible<T>> Section<P, T> {
             a_bot,
             b_bot,
             dir,
-            _phantom: Default::default(),
         }
     }
 }
 
-pub(crate) trait SectionToSegment<T: FloatNumber, P: FloatPointCompatible<T>> {
-    fn add_section(&mut self, section: &Section<P, T>, adapter: &FloatPointAdapter<P, T>);
+pub(crate) trait SectionToSegment<P: FloatPointCompatible> {
+    fn add_section(&mut self, section: &Section<P>, adapter: &FloatPointAdapter<P>);
 }
 
-impl<T: FloatNumber, P: FloatPointCompatible<T>> SectionToSegment<T, P> for Vec<Segment<ShapeCountBoolean>> {
-    fn add_section(&mut self, section: &Section<P, T>, adapter: &FloatPointAdapter<P, T>) {
+impl<P: FloatPointCompatible> SectionToSegment<P> for Vec<Segment<ShapeCountBoolean>> {
+    fn add_section(&mut self, section: &Section<P>, adapter: &FloatPointAdapter<P>) {
         let a_top = adapter.float_to_int(&section.a_top);
         let b_top = adapter.float_to_int(&section.b_top);
         let a_bot = adapter.float_to_int(&section.a_bot);

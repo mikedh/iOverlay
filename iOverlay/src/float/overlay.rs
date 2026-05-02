@@ -42,13 +42,13 @@ pub struct OverlayOptions<T: FloatNumber> {
 }
 
 /// This struct is essential for describing and uploading the geometry or shapes required to construct an `FloatOverlay`. It prepares the necessary data for boolean operations.
-pub struct FloatOverlay<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub struct FloatOverlay<P: FloatPointCompatible> {
     pub(super) overlay: Overlay,
     pub(super) clean_result: bool,
-    pub(super) adapter: FloatPointAdapter<P, T>,
+    pub(super) adapter: FloatPointAdapter<P>,
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
+impl<P: FloatPointCompatible> FloatOverlay<P> {
     /// Constructs a new `FloatOverlay`, a builder for overlaying geometric shapes
     /// by converting float-based geometry to integer space, using a pre-configured adapter.
     ///
@@ -57,7 +57,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     /// - `capacity`: Initial capacity for storing segments, ideally matching the total number of
     ///   segments for efficient memory allocation.
     #[inline]
-    pub fn with_adapter(adapter: FloatPointAdapter<P, T>, capacity: usize) -> Self {
+    pub fn with_adapter(adapter: FloatPointAdapter<P>, capacity: usize) -> Self {
         Self::new_custom(adapter, Default::default(), Default::default(), capacity)
     }
 
@@ -72,8 +72,8 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     ///   segments for efficient memory allocation.
     #[inline]
     pub fn new_custom(
-        adapter: FloatPointAdapter<P, T>,
-        options: OverlayOptions<T>,
+        adapter: FloatPointAdapter<P>,
+        options: OverlayOptions<P::Scalar>,
         solver: Solver,
         capacity: usize,
     ) -> Self {
@@ -93,7 +93,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     /// - `capacity`: Initial capacity for storing segments, ideally matching the total number of
     ///   segments for efficient memory allocation.
     #[inline]
-    pub fn new_empty(options: OverlayOptions<T>, solver: Solver, capacity: usize) -> Self {
+    pub fn new_empty(options: OverlayOptions<P::Scalar>, solver: Solver, capacity: usize) -> Self {
         let clean_result = options.clean_result;
         let adapter = FloatPointAdapter::new(FloatRect::zero());
         let overlay = Overlay::new_custom(capacity, options.int_default(), solver);
@@ -113,10 +113,8 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     ///     - `Shapes`: A collection of shapes, where each shape may consist of multiple contours.
     pub fn with_subj_and_clip<R0, R1>(subj: &R0, clip: &R1) -> Self
     where
-        R0: ShapeResource<P, T> + ?Sized,
-        R1: ShapeResource<P, T> + ?Sized,
-        P: FloatPointCompatible<T>,
-        T: FloatNumber,
+        R0: ShapeResource<P> + ?Sized,
+        R1: ShapeResource<P> + ?Sized,
     {
         let iter = subj.iter_paths().chain(clip.iter_paths()).flatten();
         let adapter = FloatPointAdapter::with_iter(iter);
@@ -140,14 +138,12 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     pub fn with_subj_and_clip_custom<R0, R1>(
         subj: &R0,
         clip: &R1,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         solver: Solver,
     ) -> Self
     where
-        R0: ShapeResource<P, T> + ?Sized,
-        R1: ShapeResource<P, T> + ?Sized,
-        P: FloatPointCompatible<T>,
-        T: FloatNumber,
+        R0: ShapeResource<P> + ?Sized,
+        R1: ShapeResource<P> + ?Sized,
     {
         let iter = subj.iter_paths().chain(clip.iter_paths()).flatten();
         let adapter = FloatPointAdapter::with_iter(iter);
@@ -167,9 +163,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     ///     - `Shapes`: A collection of shapes, where each shape may consist of multiple contours.
     pub fn with_subj<R>(subj: &R) -> Self
     where
-        R: ShapeResource<P, T> + ?Sized,
-        P: FloatPointCompatible<T>,
-        T: FloatNumber,
+        R: ShapeResource<P> + ?Sized,
     {
         let iter = subj.iter_paths().flatten();
         let adapter = FloatPointAdapter::with_iter(iter);
@@ -186,11 +180,9 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     ///     - `Shapes`: A collection of shapes, where each shape may consist of multiple contours.
     /// - `options`: Adjust custom behavior.
     /// - `solver`: Type of solver to use.
-    pub fn with_subj_custom<R>(subj: &R, options: OverlayOptions<T>, solver: Solver) -> Self
+    pub fn with_subj_custom<R>(subj: &R, options: OverlayOptions<P::Scalar>, solver: Solver) -> Self
     where
-        R: ShapeResource<P, T> + ?Sized,
-        P: FloatPointCompatible<T>,
-        T: FloatNumber,
+        R: ShapeResource<P> + ?Sized,
     {
         let iter = subj.iter_paths().flatten();
         let adapter = FloatPointAdapter::with_iter(iter);
@@ -207,7 +199,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     ///     - `Shapes`: A collection of shapes, where each shape may consist of multiple contours.
     /// - `shape_type`: Specifies the role of the added paths in the overlay operation, either as `Subject` or `Clip`.
     #[inline]
-    pub fn unsafe_add_source<R: ShapeResource<P, T> + ?Sized>(
+    pub fn unsafe_add_source<R: ShapeResource<P> + ?Sized>(
         mut self,
         resource: &R,
         shape_type: ShapeType,
@@ -233,7 +225,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     }
 
     #[inline]
-    fn add_source<R: ShapeResource<P, T> + ?Sized>(&mut self, resource: &R, shape_type: ShapeType) {
+    fn add_source<R: ShapeResource<P> + ?Sized>(&mut self, resource: &R, shape_type: ShapeType) {
         for contour in resource.iter_paths() {
             self.overlay
                 .add_path_iter(contour.iter().map(|p| self.adapter.float_to_int(p)), shape_type);
@@ -249,10 +241,8 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     ///     - `Shapes`: A collection of shapes, where each shape may consist of multiple contours.
     pub fn reinit_with_subj_and_clip<R0, R1>(&mut self, subj: &R0, clip: &R1)
     where
-        R0: ShapeResource<P, T> + ?Sized,
-        R1: ShapeResource<P, T> + ?Sized,
-        P: FloatPointCompatible<T>,
-        T: FloatNumber,
+        R0: ShapeResource<P> + ?Sized,
+        R1: ShapeResource<P> + ?Sized,
     {
         self.clear();
 
@@ -270,9 +260,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     ///     - `Shapes`: A collection of shapes, where each shape may consist of multiple contours.
     pub fn reinit_with_subj<R>(&mut self, subj: &R)
     where
-        R: ShapeResource<P, T> + ?Sized,
-        P: FloatPointCompatible<T>,
-        T: FloatNumber,
+        R: ShapeResource<P> + ?Sized,
     {
         self.clear();
 
@@ -284,7 +272,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     /// Convert into `FloatOverlayGraph` from the added paths or shapes using the specified build rule. This graph is the foundation for executing boolean operations, allowing for the analysis and manipulation of the geometric data. The `OverlayGraph` created by this method represents a preprocessed state of the input shapes, optimized for the application of boolean operations based on the provided build rule.
     /// - `fill_rule`: Specifies the rule for determining filled areas within the shapes, influencing how the resulting graph represents intersections and unions.
     #[inline]
-    pub fn build_graph_view(&mut self, fill_rule: FillRule) -> Option<FloatOverlayGraph<'_, P, T>> {
+    pub fn build_graph_view(&mut self, fill_rule: FillRule) -> Option<FloatOverlayGraph<'_, P>> {
         let graph = self.overlay.build_graph_view(fill_rule)?;
         Some(FloatOverlayGraph::new(
             graph,
@@ -396,9 +384,9 @@ impl<T: FloatNumber> Default for OverlayOptions<T> {
 }
 
 impl<T: FloatNumber> OverlayOptions<T> {
-    pub(crate) fn int_with_adapter<P: FloatPointCompatible<T>>(
+    pub(crate) fn int_with_adapter<P: FloatPointCompatible<Scalar = T>>(
         &self,
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
     ) -> IntOverlayOptions {
         IntOverlayOptions {
             preserve_input_collinear: self.preserve_input_collinear,

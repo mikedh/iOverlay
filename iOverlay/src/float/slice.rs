@@ -5,17 +5,15 @@ use crate::float::scale::FixedScaleOverlayError;
 use crate::float::string_overlay::FloatStringOverlay;
 use crate::string::rule::StringRule;
 use i_float::float::compatible::FloatPointCompatible;
-use i_float::float::number::FloatNumber;
 use i_shape::base::data::Shapes;
 use i_shape::source::resource::ShapeResource;
 
 /// The `FloatSlice` trait provides methods to slice geometric shapes using a given path or set of paths,
 /// allowing for boolean operations based on the specified build rule.
-pub trait FloatSlice<R, P, T: FloatNumber>
+pub trait FloatSlice<R, P>
 where
-    R: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
-    T: FloatNumber,
+    R: ShapeResource<P>,
+    P: FloatPointCompatible,
 {
     /// Slices the current shapes by string lines.
     ///
@@ -48,7 +46,7 @@ where
         &self,
         resource: &R,
         fill_rule: FillRule,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError>;
 
     /// Slices the current shapes by string lines.
@@ -68,7 +66,7 @@ where
         &self,
         resource: &R,
         fill_rule: FillRule,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         solver: Solver,
     ) -> Shapes<P>;
 
@@ -90,18 +88,17 @@ where
         &self,
         resource: &R,
         fill_rule: FillRule,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         solver: Solver,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError>;
 }
 
-impl<R0, R1, P, T> FloatSlice<R0, P, T> for R1
+impl<R0, R1, P> FloatSlice<R0, P> for R1
 where
-    R0: ShapeResource<P, T>,
-    R1: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
-    T: FloatNumber,
+    R0: ShapeResource<P>,
+    R1: ShapeResource<P>,
+    P: FloatPointCompatible,
 {
     #[inline]
     fn slice_by(&self, resource: &R0, fill_rule: FillRule) -> Shapes<P> {
@@ -116,7 +113,7 @@ where
         &self,
         resource: &R0,
         fill_rule: FillRule,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError> {
         Ok(
             FloatStringOverlay::with_shape_and_string_fixed_scale(self, resource, scale)?
@@ -131,7 +128,7 @@ where
         &self,
         resource: &R0,
         fill_rule: FillRule,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         solver: Solver,
     ) -> Shapes<P> {
         FloatStringOverlay::with_shape_and_string(self, resource)
@@ -145,9 +142,9 @@ where
         &self,
         resource: &R0,
         fill_rule: FillRule,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         solver: Solver,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError> {
         Ok(
             FloatStringOverlay::with_shape_and_string_fixed_scale(self, resource, scale)?

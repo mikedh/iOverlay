@@ -10,38 +10,38 @@ use i_float::adapter::FloatPointAdapter;
 use i_float::float::compatible::FloatPointCompatible;
 use i_float::float::number::FloatNumber;
 
-trait StrokeBuild<P: FloatPointCompatible<T>, T: FloatNumber> {
+trait StrokeBuild<P: FloatPointCompatible> {
     fn build(
         &self,
         path: &[P],
         is_closed_path: bool,
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     );
 
     fn capacity(&self, paths_count: usize, points_count: usize, is_closed_path: bool) -> usize;
-    fn additional_offset(&self, radius: T) -> T;
+    fn additional_offset(&self, radius: P::Scalar) -> P::Scalar;
 }
 
-pub(super) struct StrokeBuilder<P: FloatPointCompatible<T>, T: FloatNumber> {
-    builder: Box<dyn StrokeBuild<P, T>>,
+pub(super) struct StrokeBuilder<P: FloatPointCompatible> {
+    builder: Box<dyn StrokeBuild<P>>,
 }
 
-struct Builder<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> {
-    radius: T,
+struct Builder<J: JoinBuilder<P>, P: FloatPointCompatible> {
+    radius: P::Scalar,
     join_builder: J,
-    start_cap_builder: CapBuilder<P, T>,
-    end_cap_builder: CapBuilder<P, T>,
+    start_cap_builder: CapBuilder<P>,
+    end_cap_builder: CapBuilder<P>,
 }
 
-impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> StrokeBuilder<P, T> {
-    pub(super) fn new(style: StrokeStyle<P, T>) -> StrokeBuilder<P, T> {
-        let radius = T::from_float(0.5 * style.width.to_f64().max(0.0));
+impl<P: FloatPointCompatible + 'static> StrokeBuilder<P> {
+    pub(super) fn new(style: StrokeStyle<P>) -> StrokeBuilder<P> {
+        let radius = P::Scalar::from_float(0.5 * style.width.to_f64().max(0.0));
 
         let start_cap_builder = CapBuilder::new(style.start_cap.normalize(), radius);
         let end_cap_builder = CapBuilder::new(style.end_cap.normalize(), radius);
 
-        let builder: Box<dyn StrokeBuild<P, T>> = match style.join.normalize() {
+        let builder: Box<dyn StrokeBuild<P>> = match style.join.normalize() {
             LineJoin::Miter(ratio) => Box::new(Builder {
                 radius,
                 join_builder: MiterJoinBuilder::new(ratio, radius),
@@ -70,7 +70,7 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> StrokeBuild
         &self,
         path: &[P],
         is_closed_path: bool,
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         self.builder.build(path, is_closed_path, adapter, segments);
@@ -82,20 +82,18 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> StrokeBuild
     }
 
     #[inline]
-    pub(super) fn additional_offset(&self, radius: T) -> T {
+    pub(super) fn additional_offset(&self, radius: P::Scalar) -> P::Scalar {
         self.builder.additional_offset(radius)
     }
 }
 
-impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> StrokeBuild<P, T>
-    for Builder<J, P, T>
-{
+impl<J: JoinBuilder<P>, P: FloatPointCompatible> StrokeBuild<P> for Builder<J, P> {
     #[inline]
     fn build(
         &self,
         path: &[P],
         is_closed_path: bool,
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         if is_closed_path {
@@ -116,7 +114,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> StrokeBui
     }
 
     #[inline]
-    fn additional_offset(&self, radius: T) -> T {
+    fn additional_offset(&self, radius: P::Scalar) -> P::Scalar {
         let start_cap = self.start_cap_builder.additional_offset();
         let end_cap = self.end_cap_builder.additional_offset();
         let join = self.join_builder.additional_offset(radius);
@@ -124,11 +122,11 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> StrokeBui
     }
 }
 
-impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J, P, T> {
+impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
     fn open_segments(
         &self,
         path: &[P],
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         // build segments only from points which are not equal in int space
@@ -181,7 +179,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
     fn closed_segments(
         &self,
         path: &[P],
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         if path.len() < 2 {
@@ -214,7 +212,7 @@ impl<J: JoinBuilder<P, T>, P: FloatPointCompatible<T>, T: FloatNumber> Builder<J
     }
 
     #[inline]
-    fn next_unique_point(start: usize, index: usize, path: &[P], adapter: &FloatPointAdapter<P, T>) -> usize {
+    fn next_unique_point(start: usize, index: usize, path: &[P], adapter: &FloatPointAdapter<P>) -> usize {
         let a = adapter.float_to_int(&path[start]);
         for (j, p) in path.iter().enumerate().skip(index) {
             let b = adapter.float_to_int(p);

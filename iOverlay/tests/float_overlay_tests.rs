@@ -23,7 +23,9 @@ mod tests {
         }
     }
 
-    impl FloatPointCompatible<f32> for FPoint {
+    impl FloatPointCompatible for FPoint {
+        type Scalar = f32;
+
         fn from_xy(x: f32, y: f32) -> Self {
             Self { x, y }
         }

@@ -3,14 +3,13 @@ use crate::core::overlay_rule::OverlayRule;
 use crate::core::solver::Solver;
 use crate::float::overlay::{FloatOverlay, OverlayOptions};
 use i_float::float::compatible::FloatPointCompatible;
-use i_float::float::number::FloatNumber;
 use i_shape::base::data::Shapes;
 use i_shape::source::resource::ShapeResource;
 
 /// Trait `Simplify` provides a method to simplify geometric shapes by reducing the number of points in contours or shapes
 /// while preserving overall shape and topology. The method applies a minimum area threshold and a build rule to
 /// determine which areas should be retained or excluded.
-pub trait SimplifyShape<P, T: FloatNumber> {
+pub trait SimplifyShape<P: FloatPointCompatible> {
     /// Simplifies the shape or collection of points, contours, or shapes, based on a specified minimum area threshold.
     ///
     /// - Returns: A collection of `Shapes<P>` that represents the simplified geometry.
@@ -27,16 +26,15 @@ pub trait SimplifyShape<P, T: FloatNumber> {
     fn simplify_shape_custom(
         &self,
         fill_rule: FillRule,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         solver: Solver,
     ) -> Shapes<P>;
 }
 
-impl<S, P, T> SimplifyShape<P, T> for S
+impl<S, P> SimplifyShape<P> for S
 where
-    S: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
-    T: FloatNumber,
+    S: ShapeResource<P>,
+    P: FloatPointCompatible,
 {
     #[inline]
     fn simplify_shape(&self, fill_rule: FillRule) -> Shapes<P> {
@@ -48,7 +46,7 @@ where
     fn simplify_shape_custom(
         &self,
         fill_rule: FillRule,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         solver: Solver,
     ) -> Shapes<P> {
         FloatOverlay::with_subj_custom(self, options, solver).overlay(OverlayRule::Subject, fill_rule)
