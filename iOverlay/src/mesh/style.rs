@@ -5,12 +5,12 @@ use i_float::float::number::FloatNumber;
 
 /// The endpoint style of a line.
 #[derive(Debug, Clone)]
-pub enum LineCap<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub enum LineCap<P: FloatPointCompatible> {
     /// A line with a squared-off end. This is the default.
     Butt,
     /// A line with a rounded end. The line ends with a semicircular arc with a radius of 1/2 the line’s width, centered on the endpoint.
     /// Takes a parameter `Angle` in radians.
-    Round(T),
+    Round(P::Scalar),
     /// A line with a squared-off end. An extended distance equal to half the line width.
     Square,
     /// Set a custom end with template points.
@@ -34,15 +34,15 @@ pub enum LineJoin<T: FloatNumber> {
 
 /// Defines the stroke style for outlining paths.
 #[derive(Debug, Clone)]
-pub struct StrokeStyle<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub struct StrokeStyle<P: FloatPointCompatible> {
     /// The width of the stroke.
-    pub width: T,
+    pub width: P::Scalar,
     /// The cap style at the start of the stroke.
-    pub start_cap: LineCap<P, T>,
+    pub start_cap: LineCap<P>,
     /// The cap style at the end of the stroke.
-    pub end_cap: LineCap<P, T>,
+    pub end_cap: LineCap<P>,
     /// The join style where two lines meet.
-    pub join: LineJoin<T>,
+    pub join: LineJoin<P::Scalar>,
 }
 
 /// Defines the outline style for offsetting shapes.
@@ -53,11 +53,11 @@ pub struct OutlineStyle<T: FloatNumber> {
     pub join: LineJoin<T>,
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> LineCap<P, T> {
+impl<P: FloatPointCompatible> LineCap<P> {
     pub(crate) fn normalize(self) -> Self {
         if let LineCap::Round(angle) = self {
             let a = angle.to_f64().clamp(0.01 * PI, 0.25 * PI);
-            LineCap::Round(T::from_float(a))
+            LineCap::Round(P::Scalar::from_float(a))
         } else {
             self
         }
@@ -80,9 +80,9 @@ impl<T: FloatNumber> LineJoin<T> {
     }
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> StrokeStyle<P, T> {
+impl<P: FloatPointCompatible> StrokeStyle<P> {
     /// Creates a new `StrokeStyle` with the specified width.
-    pub fn new(width: T) -> Self {
+    pub fn new(width: P::Scalar) -> Self {
         Self {
             width,
             ..Default::default()
@@ -90,31 +90,31 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> StrokeStyle<P, T> {
     }
 
     /// Sets the stroke width.
-    pub fn width(mut self, width: T) -> Self {
-        self.width = T::from_float(width.to_f64().max(0.0));
+    pub fn width(mut self, width: P::Scalar) -> Self {
+        self.width = P::Scalar::from_float(width.to_f64().max(0.0));
         self
     }
 
     /// Sets the cap style at the start of the stroke.
-    pub fn start_cap(mut self, cap: LineCap<P, T>) -> Self {
+    pub fn start_cap(mut self, cap: LineCap<P>) -> Self {
         self.start_cap = cap.normalize();
         self
     }
 
     /// Sets the cap style at the end of the stroke.
-    pub fn end_cap(mut self, cap: LineCap<P, T>) -> Self {
+    pub fn end_cap(mut self, cap: LineCap<P>) -> Self {
         self.end_cap = cap.normalize();
         self
     }
 
     /// Sets the line join style.
-    pub fn line_join(mut self, join: LineJoin<T>) -> Self {
+    pub fn line_join(mut self, join: LineJoin<P::Scalar>) -> Self {
         self.join = join.normalize();
         self
     }
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> Default for StrokeStyle<P, T> {
+impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> Default for StrokeStyle<P> {
     fn default() -> Self {
         Self {
             width: T::from_float(1.0),

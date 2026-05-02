@@ -10,8 +10,8 @@ use i_shape::source::resource::ShapeResource;
 
 pub trait FloatClip<R, P, T>
 where
-    R: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
+    R: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     /// Clips paths according to the specified build and clip rules.
@@ -148,9 +148,9 @@ mod tests {
 
 impl<R0, R1, P, T> FloatClip<R0, P, T> for R1
 where
-    R0: ShapeResource<P, T>,
-    R1: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
+    R0: ShapeResource<P>,
+    R1: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     #[inline]

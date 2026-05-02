@@ -13,8 +13,8 @@ use i_shape::source::resource::ShapeResource;
 /// allowing for boolean operations based on the specified build rule.
 pub trait FloatSlice<R, P, T: FloatNumber>
 where
-    R: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
+    R: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     /// Slices the current shapes by string lines.
@@ -98,9 +98,9 @@ where
 
 impl<R0, R1, P, T> FloatSlice<R0, P, T> for R1
 where
-    R0: ShapeResource<P, T>,
-    R1: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
+    R0: ShapeResource<P>,
+    R1: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     #[inline]

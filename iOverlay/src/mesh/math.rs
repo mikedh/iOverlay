@@ -5,7 +5,7 @@ use i_float::float::vector::FloatPointMath;
 pub(crate) struct Math<T, P> {
     _phantom: core::marker::PhantomData<(T, P)>,
 }
-impl<T: FloatNumber, P: FloatPointCompatible<T>> Math<T, P> {
+impl<T: FloatNumber, P: FloatPointCompatible<Scalar = T>> Math<T, P> {
     #[inline(always)]
     pub(crate) fn normal(a: &P, b: &P) -> P {
         let c = FloatPointMath::sub(a, b);

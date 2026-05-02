@@ -13,12 +13,12 @@ pub(super) enum SharpMiter {
 
 impl Miter {
     #[inline]
-    pub(super) fn sharp<T: FloatNumber, P: FloatPointCompatible<T>>(
+    pub(super) fn sharp<T: FloatNumber, P: FloatPointCompatible<Scalar = T>>(
         pa: P,
         pb: P,
         va: P,
         vb: P,
-        adapter: &FloatPointAdapter<P, T>,
+        adapter: &FloatPointAdapter<P>,
     ) -> SharpMiter {
         let ia = adapter.float_to_int(&pa);
         let ib = adapter.float_to_int(&pb);
@@ -39,7 +39,7 @@ impl Miter {
     }
 
     #[inline]
-    pub(super) fn peak<T: FloatNumber, P: FloatPointCompatible<T>>(pa: P, pb: P, va: P, vb: P) -> P {
+    pub(super) fn peak<T: FloatNumber, P: FloatPointCompatible<Scalar = T>>(pa: P, pb: P, va: P, vb: P) -> P {
         let pax = pa.x();
         let pay = pa.y();
         let pbx = pb.x();

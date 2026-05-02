@@ -11,12 +11,12 @@ use i_shape::float::simple::SimplifyContour;
 
 /// The `FloatStringGraph` struct represents a graph structure with floating-point precision,
 /// providing methods to extract geometric shapes from the graph after applying string-based operations.
-pub struct FloatStringGraph<'a, P: FloatPointCompatible<T>, T: FloatNumber> {
+pub struct FloatStringGraph<'a, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     pub graph: StringGraph<'a>,
-    pub adapter: FloatPointAdapter<P, T>,
+    pub adapter: FloatPointAdapter<P>,
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatStringGraph<'_, P, T> {
+impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> FloatStringGraph<'_, P, T> {
     /// Extracts shapes from the overlay graph based on the specified string rule.
     /// This method is used to retrieve the final geometric shapes after boolean operations have been applied.
     /// It's suitable for most use cases where the minimum area of shapes is not a concern.

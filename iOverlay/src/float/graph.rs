@@ -16,15 +16,15 @@ use i_shape::float::simple::SimplifyContour;
 /// The `FloatOverlayGraph` struct represents an overlay graph with floating point precision,
 /// providing methods to extract geometric shapes from the graph after applying boolean operations.
 /// [More information](https://ishape-rust.github.io/iShape-js/overlay/overlay_graph/overlay_graph.html) about Overlay Graph.
-pub struct FloatOverlayGraph<'a, P: FloatPointCompatible<T>, T: FloatNumber> {
+pub struct FloatOverlayGraph<'a, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     pub graph: OverlayGraph<'a>,
-    pub adapter: FloatPointAdapter<P, T>,
+    pub adapter: FloatPointAdapter<P>,
     clean_result: bool,
 }
 
-impl<'a, P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlayGraph<'a, P, T> {
+impl<'a, P: FloatPointCompatible<Scalar = T>, T: FloatNumber> FloatOverlayGraph<'a, P, T> {
     #[inline]
-    pub(crate) fn new(graph: OverlayGraph<'a>, adapter: FloatPointAdapter<P, T>, clean_result: bool) -> Self {
+    pub(crate) fn new(graph: OverlayGraph<'a>, adapter: FloatPointAdapter<P>, clean_result: bool) -> Self {
         Self {
             graph,
             adapter,

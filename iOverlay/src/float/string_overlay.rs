@@ -17,12 +17,12 @@ use i_shape::source::resource::ShapeResource;
 ///
 /// The float-to-integer conversion is controlled by the `FloatPointAdapter` scale:
 /// `x_int = (x_float - offset_x) * scale`. Use a fixed scale if you need predictable precision.
-pub struct FloatStringOverlay<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub struct FloatStringOverlay<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     pub(super) overlay: StringOverlay,
-    pub(super) adapter: FloatPointAdapter<P, T>,
+    pub(super) adapter: FloatPointAdapter<P>,
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatStringOverlay<P, T> {
+impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> FloatStringOverlay<P, T> {
     /// Constructs a new `FloatStringOverlay`, a builder for overlaying geometric shapes
     /// by converting float-based geometry to integer space, using a pre-configured adapter.
     ///
@@ -33,7 +33,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatStringOverlay<P, T> {
     /// - `capacity`: Initial capacity for storing segments, ideally matching the total number of
     ///   segments for efficient memory allocation.
     #[inline]
-    pub fn with_adapter(adapter: FloatPointAdapter<P, T>, capacity: usize) -> Self {
+    pub fn with_adapter(adapter: FloatPointAdapter<P>, capacity: usize) -> Self {
         Self {
             overlay: StringOverlay::new(capacity),
             adapter,
@@ -55,9 +55,9 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatStringOverlay<P, T> {
     ///     - `Vec<Paths>`: A collection of grouped paths, where each group may consist of multiple paths.
     pub fn with_shape_and_string<R0, R1>(shape: &R0, string: &R1) -> Self
     where
-        R0: ShapeResource<P, T>,
-        R1: ShapeResource<P, T>,
-        P: FloatPointCompatible<T>,
+        R0: ShapeResource<P>,
+        R1: ShapeResource<P>,
+        P: FloatPointCompatible<Scalar = T>,
         T: FloatNumber,
     {
         let iter = shape.iter_paths().chain(string.iter_paths()).flatten();
@@ -80,9 +80,9 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatStringOverlay<P, T> {
         scale: T,
     ) -> Result<Self, FixedScaleOverlayError>
     where
-        R0: ShapeResource<P, T>,
-        R1: ShapeResource<P, T>,
-        P: FloatPointCompatible<T>,
+        R0: ShapeResource<P>,
+        R1: ShapeResource<P>,
+        P: FloatPointCompatible<Scalar = T>,
         T: FloatNumber,
     {
         let s = FixedScaleOverlayError::validate_scale(scale)?;
@@ -112,7 +112,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatStringOverlay<P, T> {
     ///     - `Shapes`: A collection of shapes, where each shape may consist of multiple contours.
     /// - `shape_type`: Specifies the role of the added paths in the overlay operation, either as `Subject` or `Clip`.
     #[inline]
-    pub fn unsafe_add_shapes<S: ShapeResource<P, T>>(mut self, source: &S) -> Self {
+    pub fn unsafe_add_shapes<S: ShapeResource<P>>(mut self, source: &S) -> Self {
         for contour in source.iter_paths() {
             self = self.unsafe_add_shape_contour(contour);
         }
@@ -126,7 +126,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatStringOverlay<P, T> {
     ///     - `Paths`: A collection of paths, each representing a string line.
     ///     - `Vec<Paths>`: A collection of grouped paths, where each group may consist of multiple paths.
     #[inline]
-    pub fn unsafe_add_string_lines<S: ShapeResource<P, T>>(mut self, resource: &S) -> Self {
+    pub fn unsafe_add_string_lines<S: ShapeResource<P>>(mut self, resource: &S) -> Self {
         for path in resource.iter_paths() {
             self = self.unsafe_add_string_line(path);
         }

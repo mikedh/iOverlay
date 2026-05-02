@@ -10,9 +10,9 @@ use i_shape::source::resource::ShapeResource;
 /// This trait supports boolean operations on contours, shapes, and collections of shapes, using customizable overlay and build rules.
 pub trait SingleFloatOverlay<R0, R1, P, T>
 where
-    R0: ShapeResource<P, T>,
-    R1: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
+    R0: ShapeResource<P>,
+    R1: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     /// General overlay method that takes an `ShapeResource` to determine the input type.
@@ -30,9 +30,9 @@ where
 
 impl<R0, R1, P, T> SingleFloatOverlay<R0, R1, P, T> for R0
 where
-    R0: ShapeResource<P, T>,
-    R1: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
+    R0: ShapeResource<P>,
+    R1: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     #[inline]

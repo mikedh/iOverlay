@@ -22,7 +22,7 @@ use i_shape::float::int_area::IntArea;
 use i_shape::float::simple::SimplifyContour;
 use i_shape::source::resource::ShapeResource;
 
-pub trait OutlineOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub trait OutlineOffset<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     /// Generates an outline shapes for contours, or shapes.
     ///
     /// - `style`: Defines the outline properties, including offset, and joins.
@@ -119,8 +119,8 @@ pub trait OutlineOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
 
 impl<S, P, T> OutlineOffset<P, T> for S
 where
-    S: ShapeResource<P, T>,
-    P: FloatPointCompatible<T> + 'static,
+    S: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T> + 'static,
     T: FloatNumber + 'static,
 {
     fn outline(&self, style: &OutlineStyle<T>) -> Shapes<P> {
@@ -203,15 +203,15 @@ where
     }
 }
 
-struct OutlineSolver<P: FloatPointCompatible<T>, T: FloatNumber> {
+struct OutlineSolver<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     outer_builder: OutlineBuilder<P, T>,
     inner_builder: OutlineBuilder<P, T>,
-    adapter: FloatPointAdapter<P, T>,
+    adapter: FloatPointAdapter<P>,
     points_count: usize,
 }
 
-impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineSolver<P, T> {
-    fn prepare<S: ShapeResource<P, T>>(source: &S, style: &OutlineStyle<T>) -> Option<Self> {
+impl<P: FloatPointCompatible<Scalar = T> + 'static, T: FloatNumber + 'static> OutlineSolver<P, T> {
+    fn prepare<S: ShapeResource<P>>(source: &S, style: &OutlineStyle<T>) -> Option<Self> {
         let (points_count, paths_count) = {
             let mut points_count = 0;
             let mut paths_count = 0;
@@ -263,7 +263,7 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineSolv
         Ok(())
     }
 
-    fn build_overlay<S: ShapeResource<P, T>>(&self, source: &S, options: OverlayOptions<T>) -> Overlay {
+    fn build_overlay<S: ShapeResource<P>>(&self, source: &S, options: OverlayOptions<T>) -> Overlay {
         let total_capacity = self.outer_builder.capacity(self.points_count);
         let mut overlay = Overlay::new_custom(
             total_capacity,
@@ -313,7 +313,7 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineSolv
         overlay
     }
 
-    fn build<S: ShapeResource<P, T>>(self, source: &S, options: OverlayOptions<T>) -> Shapes<P> {
+    fn build<S: ShapeResource<P>>(self, source: &S, options: OverlayOptions<T>) -> Shapes<P> {
         let preserve_output_collinear = options.preserve_output_collinear;
         let clean_result = options.clean_result;
         let mut overlay = self.build_overlay(source, options);
@@ -332,7 +332,7 @@ impl<P: FloatPointCompatible<T> + 'static, T: FloatNumber + 'static> OutlineSolv
         }
     }
 
-    fn build_into<S: ShapeResource<P, T>>(
+    fn build_into<S: ShapeResource<P>>(
         self,
         source: &S,
         options: OverlayOptions<T>,

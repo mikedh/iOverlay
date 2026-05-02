@@ -6,7 +6,7 @@ use i_float::float::number::FloatNumber;
 use i_float::int::point::IntPoint;
 
 #[derive(Debug, Clone)]
-pub(super) struct OffsetSection<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub(super) struct OffsetSection<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> {
     pub(super) a: IntPoint,
     pub(super) b: IntPoint,
     pub(super) a_top: IntPoint,
@@ -15,7 +15,7 @@ pub(super) struct OffsetSection<P: FloatPointCompatible<T>, T: FloatNumber> {
     pub(super) _phantom: PhantomData<T>,
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> OffsetSection<P, T> {
+impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> OffsetSection<P, T> {
     #[inline]
     pub(super) fn top_segment(&self) -> Option<Segment<ShapeCountBoolean>> {
         if self.a_top != self.b_top {

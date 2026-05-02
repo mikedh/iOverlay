@@ -34,8 +34,8 @@ pub trait SimplifyShape<P, T: FloatNumber> {
 
 impl<S, P, T> SimplifyShape<P, T> for S
 where
-    S: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
+    S: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     #[inline]

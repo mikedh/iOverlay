@@ -42,9 +42,9 @@ impl FixedScaleOverlayError {
 /// Larger `scale` gives higher precision but must fit within the safe integer bounds.
 pub trait FixedScaleFloatOverlay<R0, R1, P, T>
 where
-    R0: ShapeResource<P, T>,
-    R1: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
+    R0: ShapeResource<P>,
+    R1: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     /// General overlay method that takes an `ShapeResource` to determine the input type.
@@ -69,9 +69,9 @@ where
 
 impl<R0, R1, P, T> FixedScaleFloatOverlay<R0, R1, P, T> for R0
 where
-    R0: ShapeResource<P, T>,
-    R1: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
+    R0: ShapeResource<P>,
+    R1: ShapeResource<P>,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     #[inline]
@@ -87,7 +87,7 @@ where
     }
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
+impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> FloatOverlay<P, T> {
     /// Creates a new `FloatOverlay` instance and initializes it with subject and clip shapes.
     ///
     /// This variant uses a fixed float-to-integer scale instead of auto-scaling.
@@ -106,9 +106,9 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
         scale: T,
     ) -> Result<Self, FixedScaleOverlayError>
     where
-        R0: ShapeResource<P, T> + ?Sized,
-        R1: ShapeResource<P, T> + ?Sized,
-        P: FloatPointCompatible<T>,
+        R0: ShapeResource<P> + ?Sized,
+        R1: ShapeResource<P> + ?Sized,
+        P: FloatPointCompatible<Scalar = T>,
         T: FloatNumber,
     {
         let s = FixedScaleOverlayError::validate_scale(scale)?;
@@ -152,9 +152,9 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
         scale: T,
     ) -> Result<Self, FixedScaleOverlayError>
     where
-        R0: ShapeResource<P, T> + ?Sized,
-        R1: ShapeResource<P, T> + ?Sized,
-        P: FloatPointCompatible<T>,
+        R0: ShapeResource<P> + ?Sized,
+        R1: ShapeResource<P> + ?Sized,
+        P: FloatPointCompatible<Scalar = T>,
         T: FloatNumber,
     {
         let s = FixedScaleOverlayError::validate_scale(scale)?;
@@ -179,7 +179,7 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatOverlay<P, T> {
     }
 }
 
-impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatPredicateOverlay<P, T> {
+impl<P: FloatPointCompatible<Scalar = T>, T: FloatNumber> FloatPredicateOverlay<P, T> {
     /// Creates a new predicate overlay with subject and clip shapes using fixed-scale precision.
     ///
     /// This variant uses a fixed float-to-integer scale instead of auto-scaling.
@@ -197,8 +197,8 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatPredicateOverlay<P, T> {
         scale: T,
     ) -> Result<Self, FixedScaleOverlayError>
     where
-        R0: ShapeResource<P, T> + ?Sized,
-        R1: ShapeResource<P, T> + ?Sized,
+        R0: ShapeResource<P> + ?Sized,
+        R1: ShapeResource<P> + ?Sized,
     {
         let s = FixedScaleOverlayError::validate_scale(scale)?;
 
@@ -237,8 +237,8 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatPredicateOverlay<P, T> {
         scale: T,
     ) -> Result<Self, FixedScaleOverlayError>
     where
-        R0: ShapeResource<P, T> + ?Sized,
-        R1: ShapeResource<P, T> + ?Sized,
+        R0: ShapeResource<P> + ?Sized,
+        R1: ShapeResource<P> + ?Sized,
     {
         let s = FixedScaleOverlayError::validate_scale(scale)?;
 
@@ -281,8 +281,8 @@ impl<P: FloatPointCompatible<T>, T: FloatNumber> FloatPredicateOverlay<P, T> {
 /// ```
 pub trait FixedScaleFloatRelate<R1, P, T>
 where
-    R1: ShapeResource<P, T> + ?Sized,
-    P: FloatPointCompatible<T>,
+    R1: ShapeResource<P> + ?Sized,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     /// Returns `true` if shapes intersect, using fixed-scale precision.
@@ -310,9 +310,9 @@ where
 
 impl<R0, R1, P, T> FixedScaleFloatRelate<R1, P, T> for R0
 where
-    R0: ShapeResource<P, T> + ?Sized,
-    R1: ShapeResource<P, T> + ?Sized,
-    P: FloatPointCompatible<T>,
+    R0: ShapeResource<P> + ?Sized,
+    R1: ShapeResource<P> + ?Sized,
+    P: FloatPointCompatible<Scalar = T>,
     T: FloatNumber,
 {
     #[inline]

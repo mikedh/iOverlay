@@ -50,7 +50,9 @@ mod tests {
             y: f32,
         }
 
-        impl FloatPointCompatible<f32> for CustomPoint {
+        impl FloatPointCompatible for CustomPoint {
+            type Scalar = f32;
+
             fn from_xy(x: f32, y: f32) -> Self {
                 Self { x, y }
             }
