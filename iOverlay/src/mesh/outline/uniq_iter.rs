@@ -4,8 +4,15 @@ use i_float::int::point::IntPoint;
 pub(super) struct UniqueSegment {
     pub(super) a: IntPoint,
     pub(super) b: IntPoint,
-    /// Index of the input edge that starts this unique segment.
+    /// Index of the FIRST input edge contributing to this unique
+    /// segment. Equal to the `tangent_start` lookup index for the
+    /// segment's `a` endpoint.
     pub(super) edge_index: usize,
+    /// Index of the LAST input edge contributing to this unique
+    /// segment. Equals `edge_index` when no collinear merging
+    /// occurred. Equal to the `tangent_end` lookup index for the
+    /// segment's `b` endpoint.
+    pub(super) last_edge_index: usize,
 }
 
 pub(super) struct UniqueSegmentsIter<I>
@@ -17,6 +24,10 @@ where
     i0: usize,
     p1: IntPoint,
     i1: usize,
+    /// Total input path length, in vertices. Used to convert
+    /// `i1` (path index of `p1`) into the edge index of the last
+    /// edge contained in the current run via `(i1 + n - 1) % n`.
+    path_len: usize,
 }
 
 impl<I> UniqueSegmentsIter<I>
@@ -24,11 +35,19 @@ where
     I: Iterator<Item = (IntPoint, usize)>,
 {
     #[inline]
-    pub(super) fn new(iter: I) -> Option<Self> {
+    pub(super) fn new(iter: I, path_len: usize) -> Option<Self> {
         let mut iter = iter;
 
         let (mut p0, mut i0) = iter.next()?;
         let (mut p1, mut i1) = iter.find(|(p, _)| p0.ne(p))?;
+        // Once we've consumed at least two distinct points, the
+        // path the caller is iterating over must contain at least
+        // those two — so `path_len > 0`. `last_edge_index`
+        // computation below depends on this (it does `% path_len`).
+        debug_assert!(
+            path_len > 0,
+            "UniqueSegmentsIter::new: non-empty iterator implies path_len > 0",
+        );
 
         let (q0, qi0) = (p0, i0);
 
@@ -50,8 +69,11 @@ where
 
         Some(Self {
             iter: chain_iter,
-            p0, i0,
-            p1, i1,
+            p0,
+            i0,
+            p1,
+            i1,
+            path_len,
         })
     }
 }
@@ -63,6 +85,12 @@ where
     type Item = UniqueSegment;
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
+        // Edge index of the last edge fully contained in the current
+        // run is `(i1 + path_len - 1) % path_len` — i.e., the edge
+        // ending at `p1`. This is the canonical lookup index for the
+        // analytical tangent at the segment's `b` endpoint.
+        let last_edge = |i1: usize| (i1 + self.path_len - 1) % self.path_len;
+
         for (p2, idx2) in &mut self.iter {
             if !include_point(self.p0, self.p1, p2) {
                 self.p1 = p2;
@@ -73,6 +101,7 @@ where
                 a: self.p0,
                 b: self.p1,
                 edge_index: self.i0,
+                last_edge_index: last_edge(self.i1),
             };
 
             self.p0 = self.p1;
@@ -89,6 +118,7 @@ where
                 a: self.p0,
                 b: self.p1,
                 edge_index: self.i0,
+                last_edge_index: last_edge(self.i1),
             };
             self.p1 = self.p0;
             Some(s)
@@ -124,21 +154,21 @@ mod tests {
 
     #[test]
     fn test_empty() {
-        let uniq_iter = UniqueSegmentsIter::new(core::iter::empty::<(IntPoint, usize)>());
+        let uniq_iter = UniqueSegmentsIter::new(core::iter::empty::<(IntPoint, usize)>(), 0);
         assert!(uniq_iter.is_none());
     }
 
     #[test]
     fn test_single_point() {
         let path = int_path![[0, 0]];
-        let uniq_iter = UniqueSegmentsIter::new(indexed(&path));
+        let uniq_iter = UniqueSegmentsIter::new(indexed(&path), path.len());
         assert!(uniq_iter.is_none());
     }
 
     #[test]
     fn test_all_points_equal() {
         let path = int_path![[0, 0], [0, 0], [0, 0]];
-        let uniq_iter = UniqueSegmentsIter::new(indexed(&path));
+        let uniq_iter = UniqueSegmentsIter::new(indexed(&path), path.len());
         assert!(uniq_iter.is_none());
     }
 
@@ -190,13 +220,16 @@ mod tests {
 
         for shift in 0..path.len() {
             let n = path.len();
-            let uniq_iter =
-                UniqueSegmentsIter::new(
-                    path[shift..].iter().chain(path[..shift].iter())
-                        .copied()
-                        .enumerate()
-                        .map(|(i, p)| (p, (i + shift) % n))
-                ).unwrap();
+            let uniq_iter = UniqueSegmentsIter::new(
+                path[shift..]
+                    .iter()
+                    .chain(path[..shift].iter())
+                    .copied()
+                    .enumerate()
+                    .map(|(i, p)| (p, (i + shift) % n)),
+                n,
+            )
+            .unwrap();
 
             let segments: Vec<_> = uniq_iter.collect();
 

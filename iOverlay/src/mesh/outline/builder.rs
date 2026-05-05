@@ -34,6 +34,8 @@ trait OutlineBuild<P: FloatPointCompatible> {
         &self,
         path: &[P],
         tags: &[u32],
+        tangent_start: &[P],
+        tangent_end: &[P],
         adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     );
@@ -92,16 +94,46 @@ impl<P: FloatPointCompatible + 'static> OutlineBuilder<P> {
         self.builder.build(path, adapter, segments);
     }
 
-    /// Like `build`, but tags each segment from a parallel `tags` array.
+    /// Like `build`, but tags each segment from a parallel `tags`
+    /// array AND takes per-edge analytical tangent vectors at each
+    /// endpoint.
+    ///
+    /// All four parallel arrays must have length `path.len()`.
+    /// `tags[i]` tags edge `i` (from `path[i]` to `path[(i+1) % n]`).
+    /// `tangent_start[i]` is the unit tangent at `path[i]` for the
+    /// curve heading into edge `i`; `tangent_end[i]` is the unit
+    /// tangent at `path[(i+1) % n]` for the curve at edge `i`'s end.
+    /// For straight-line input segments, both tangents equal the
+    /// line direction; for tagged-arc input the analytical tangent
+    /// is the arc derivative.
+    ///
+    /// **Dedup-share contract.** At a CAD-tangent boundary between
+    /// adjacent edges — where the caller passes the **same** tangent
+    /// vector on both sides of the shared vertex — the offset
+    /// endpoints round-trip to bit-identical ints and `feed_join`
+    /// emits nothing, suppressing the spurious round-join that
+    /// chord-based discretization would otherwise insert. The
+    /// equality must be **bit-identical floats**, not just
+    /// analytically equal — compute the tangent once per shared
+    /// vertex and use the same value on both sides.
     #[inline]
     pub fn build_and_tag(
         &self,
         path: &[P],
         tags: &[u32],
+        tangent_start: &[P],
+        tangent_end: &[P],
         adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
-        self.builder.build_and_tag(path, tags, adapter, segments);
+        self.builder.build_and_tag(
+            path,
+            tags,
+            tangent_start,
+            tangent_end,
+            adapter,
+            segments,
+        );
     }
 
     #[inline]
@@ -134,13 +166,26 @@ impl<J: JoinBuilder<P>, P: FloatPointCompatible> OutlineBuild<P> for Builder<J, 
         &self,
         path: &[P],
         tags: &[u32],
+        tangent_start: &[P],
+        tangent_end: &[P],
         adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
-        if path.len() < 2 || tags.len() != path.len() {
+        if path.len() < 2
+            || tags.len() != path.len()
+            || tangent_start.len() != path.len()
+            || tangent_end.len() != path.len()
+        {
             return;
         }
-        self.build_and_tag(path, tags, adapter, segments);
+        self.build_and_tag(
+            path,
+            tags,
+            tangent_start,
+            tangent_end,
+            adapter,
+            segments,
+        );
     }
 
     #[inline]
@@ -162,36 +207,46 @@ impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
         adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
-        self.build_impl(path, None, adapter, segments);
+        self.build_impl(path, None, None, adapter, segments);
     }
 
-    /// Like `build`, but sets `segment.tag` from the parallel `tags`
-    /// array. `tags.len()` must equal `path.len()`. Edge `i` gets
-    /// `tags[i]`; join segments between different-tag edges get the
-    /// `JOIN_TAG_SENTINEL`.
+    /// Tagged + tangent-aware build. See
+    /// [`OutlineBuilder::build_and_tag`] for the dedup-share contract.
     #[inline]
     fn build_and_tag(
         &self,
         path: &[P],
         tags: &[u32],
+        tangent_start: &[P],
+        tangent_end: &[P],
         adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
         debug_assert_eq!(path.len(), tags.len());
-        self.build_impl(path, Some(tags), adapter, segments);
+        debug_assert_eq!(path.len(), tangent_start.len());
+        debug_assert_eq!(path.len(), tangent_end.len());
+        self.build_impl(
+            path,
+            Some(tags),
+            Some((tangent_start, tangent_end)),
+            adapter,
+            segments,
+        );
     }
 
-    /// Shared body for `build` and `build_and_tag`. The two call sites
-    /// differ only in whether they apply per-edge tags; this function
-    /// runs the offset/join pipeline once and short-circuits the tag
-    /// writes when `tags` is `None`. `#[inline]` lets the monomorphized
-    /// untagged path collapse back to a straight offset pipeline —
-    /// no branches on the hot loop.
+    /// Shared body for the two public entry points. Both args are
+    /// optional. When `tangents` is `None`, the per-section
+    /// perpendicular falls back to chord direction (`(b - a) /
+    /// |b - a|`) — same numbers the upstream chord-only builder
+    /// would have produced. When `tags` is `None`, `apply_tag` is a
+    /// no-op so an `#[inline]` monomorphization collapses back to
+    /// the untagged hot loop.
     #[inline]
     fn build_impl(
         &self,
         path: &[P],
         tags: Option<&[u32]>,
+        tangents: Option<(&[P], &[P])>,
         adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
@@ -200,14 +255,16 @@ impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
             return;
         }
 
-        // Each UniqueSegment carries edge_index — the index of the
-        // input edge it came from. Tag lookup is tags[edge_index],
-        // a direct array access: no map, no collisions.
+        // Each UniqueSegment carries `edge_index` (first edge of the
+        // run, used for `tangent_start` lookup) and `last_edge_index`
+        // (last edge of the run, used for `tangent_end` lookup at
+        // the run's `b` endpoint when collinear merging spans
+        // multiple input edges).
         let iter = path
             .iter()
             .enumerate()
             .map(|(i, p)| (adapter.float_to_int(p), i));
-        let mut uniq = match UniqueSegmentsIter::new(iter) {
+        let mut uniq = match UniqueSegmentsIter::new(iter, n) {
             Some(u) => u,
             None => return,
         };
@@ -217,8 +274,6 @@ impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
         };
 
         let edge_tag = |edge_index: usize| -> u32 { tags.map_or(0, |t| t[edge_index % n]) };
-        // `apply_tag` owns the &mut Vec through its argument, so the
-        // closure itself only captures the boolean Option::is_some.
         let has_tags = tags.is_some();
         let apply_tag = |segments: &mut Vec<Segment<ShapeCountBoolean>>, mark: usize, tag: u32| {
             if has_tags {
@@ -228,8 +283,25 @@ impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
                 }
             }
         };
+        // Hot-path dispatch: tangent-aware sections cost two
+        // perpendiculars (one per endpoint), chord-only sections
+        // cost one (dir_a == dir_b). Keeping a separate chord
+        // constructor avoids paying for two `ortho_and_scale` calls
+        // on every section in the union/boolean pipeline.
+        let make_section = |us: &UniqueSegment| -> OffsetSection<P> {
+            match tangents {
+                Some((ts, te)) => OffsetSection::with_tangents(
+                    self.radius,
+                    us,
+                    ts[us.edge_index],
+                    te[us.last_edge_index],
+                    adapter,
+                ),
+                None => OffsetSection::from_chord(self.radius, us, adapter),
+            }
+        };
 
-        let s0 = OffsetSection::new(self.radius, &us0, adapter);
+        let s0 = make_section(&us0);
         let mut sk = s0.clone();
         let mut prev_tag = edge_tag(us0.edge_index);
 
@@ -238,7 +310,7 @@ impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
         apply_tag(segments, mark, prev_tag);
 
         for usi in uniq {
-            let si = OffsetSection::new(self.radius, &usi, adapter);
+            let si = make_section(&usi);
             let cur_tag = edge_tag(usi.edge_index);
 
             let mark = segments.len();
@@ -278,6 +350,21 @@ impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
         adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
+        // Tangent-boundary fast path: when the caller's analytical
+        // tangents at the shared vertex are bit-identical (the
+        // `with_tangents` contract), `s0.b_top` and `s1.a_top`
+        // round-trip identically through `float_to_int`. The
+        // mathematical offset has no corner here — emit nothing.
+        // This covers BOTH outer-tangent (no fillet needed) and
+        // inner-tangent (no clip-extend segments needed) in one
+        // guard; the upstream code only handled the outer case
+        // via `if s0.b_top != s1.a_top` inside the outer branch
+        // and would push two duplicate segments in the inner branch
+        // at a tangent concave transition.
+        if s0.b_top == s1.a_top {
+            return;
+        }
+
         let vi = s1.b - s1.a;
         let vp = s0.b - s0.a;
 
@@ -285,11 +372,10 @@ impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
         debug_assert!(cross != 0, "not possible! UniqueSegmentsIter guarantee it");
         let outer_corner = (cross > 0) == self.extend;
         if outer_corner {
-            if s0.b_top != s1.a_top {
-                self.join_builder.add_join(s0, s1, adapter, segments);
-            }
+            self.join_builder.add_join(s0, s1, adapter, segments);
         } else {
-            // no join
+            // inner (concave) corner — extend the offset bottoms to
+            // clip at the input vertex
             segments.push_some(s0.b_segment());
             segments.push_some(s1.a_segment());
         }
@@ -297,27 +383,89 @@ impl<J: JoinBuilder<P>, P: FloatPointCompatible> Builder<J, P> {
 }
 
 impl<P: FloatPointCompatible> OffsetSection<P> {
+    /// Chord-only constructor: both endpoints' tangents are the
+    /// chord direction, so the perpendicular is computed once and
+    /// reused. Hot path for chord-only `build` (union, boolean,
+    /// upstream consumers).
     #[inline]
-    fn new(radius: P::Scalar, s: &UniqueSegment, adapter: &FloatPointAdapter<P>) -> Self {
+    fn from_chord(
+        radius: P::Scalar,
+        s: &UniqueSegment,
+        adapter: &FloatPointAdapter<P>,
+    ) -> Self {
         let a = adapter.int_to_float(&s.a);
         let b = adapter.int_to_float(&s.b);
-        let ab = FloatPointMath::sub(&b, &a);
-        let dir = FloatPointMath::normalize(&ab);
+        let dir = FloatPointMath::normalize(&FloatPointMath::sub(&b, &a));
         let t = Math::ortho_and_scale(&dir, radius);
-
-        let at = FloatPointMath::add(&a, &t);
-        let bt = FloatPointMath::add(&b, &t);
-        let a_top = adapter.float_to_int(&at);
-        let b_top = adapter.float_to_int(&bt);
-
+        let a_top = adapter.float_to_int(&FloatPointMath::add(&a, &t));
+        let b_top = adapter.float_to_int(&FloatPointMath::add(&b, &t));
         Self {
             a: s.a,
             b: s.b,
             a_top,
             b_top,
-            dir,
+            dir_a: dir,
+            dir_b: dir,
         }
     }
+
+    /// Tangent-aware constructor: `dir_a` / `dir_b` are the
+    /// caller-supplied unit tangents at each endpoint. **Caller
+    /// MUST pass unit-length vectors** — `ortho_and_scale` does not
+    /// normalize, so a non-unit input would silently scale the
+    /// offset. The `debug_assert!`s catch this in dev builds; the
+    /// release path skips the sqrt+div.
+    ///
+    /// **Dedup-share contract.** At a boundary between two sections
+    /// that the caller intends to be tangent, the previous section's
+    /// `dir_b` and the next section's `dir_a` must be bit-identical
+    /// floats. Caller computes the tangent once per shared vertex
+    /// and passes the same value to both sides; offset endpoints
+    /// round-trip to identical ints and `feed_join`'s
+    /// `s0.b_top == s1.a_top` guard emits nothing — no spurious
+    /// JOIN_TAG run.
+    #[inline]
+    fn with_tangents(
+        radius: P::Scalar,
+        s: &UniqueSegment,
+        dir_a: P,
+        dir_b: P,
+        adapter: &FloatPointAdapter<P>,
+    ) -> Self {
+        debug_assert!(
+            unit_norm_check(&dir_a),
+            "with_tangents: dir_a is not unit length",
+        );
+        debug_assert!(
+            unit_norm_check(&dir_b),
+            "with_tangents: dir_b is not unit length",
+        );
+        let a = adapter.int_to_float(&s.a);
+        let b = adapter.int_to_float(&s.b);
+        let ta = Math::ortho_and_scale(&dir_a, radius);
+        let tb = Math::ortho_and_scale(&dir_b, radius);
+        let a_top = adapter.float_to_int(&FloatPointMath::add(&a, &ta));
+        let b_top = adapter.float_to_int(&FloatPointMath::add(&b, &tb));
+        Self {
+            a: s.a,
+            b: s.b,
+            a_top,
+            b_top,
+            dir_a,
+            dir_b,
+        }
+    }
+}
+
+/// Debug-only: confirm `v` is unit length within a generous slack
+/// (~1e-9 on `f32`-ish scalars). Production path skips entirely.
+#[inline]
+fn unit_norm_check<P: FloatPointCompatible>(v: &P) -> bool {
+    let dot = FloatPointMath::dot_product(v, v);
+    let one = P::Scalar::from_float(1.0);
+    let slack = P::Scalar::from_float(1e-6);
+    let diff = if dot >= one { dot - one } else { one - dot };
+    diff <= slack
 }
 
 trait VecPushSome<T> {

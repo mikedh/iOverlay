@@ -108,14 +108,20 @@ impl<P: FloatPointCompatible> JoinBuilder<P> for MiterJoinBuilder<P::Scalar> {
             return;
         }
 
-        let dot_product = FloatPointMath::dot_product(&s0.dir, &s1.dir);
+        // The corner sees the **incoming** tangent at s0's `b`
+        // endpoint and the **outgoing** tangent at s1's `a`
+        // endpoint. For chord-based sections these equal each
+        // section's chord direction (upstream behavior); for
+        // tangent-aware sections they are the analytical tangents
+        // supplied by the caller.
+        let dot_product = FloatPointMath::dot_product(&s0.dir_b, &s1.dir_a);
         let is_limited = self.limit_dot_product > dot_product;
 
         let pa = adapter.int_to_float(&ia);
         let pb = adapter.int_to_float(&ib);
 
         if is_limited {
-            let (va, vb) = (s0.dir, s1.dir);
+            let (va, vb) = (s0.dir_b, s1.dir_a);
 
             let ax = pa.x() + self.max_length * va.x();
             let ay = pa.y() + self.max_length * va.y();
@@ -138,7 +144,7 @@ impl<P: FloatPointCompatible> JoinBuilder<P> for MiterJoinBuilder<P::Scalar> {
                 segments.push(Segment::subject(ibc, ib));
             }
         } else {
-            let c = Miter::peak(pa, pb, s0.dir, s1.dir);
+            let c = Miter::peak(pa, pb, s0.dir_b, s1.dir_a);
             debug_assert!(ia != ib);
 
             let ic = adapter.float_to_int(&c);
@@ -199,7 +205,10 @@ impl<P: FloatPointCompatible> JoinBuilder<P> for RoundJoinBuilder<P::Scalar> {
         adapter: &FloatPointAdapter<P>,
         segments: &mut Vec<Segment<ShapeCountBoolean>>,
     ) {
-        let dot_product = FloatPointMath::dot_product(&s0.dir, &s1.dir);
+        // Same convention as `MiterJoinBuilder`: `s0.dir_b` is the
+        // tangent leaving s0 into the corner, `s1.dir_a` is the
+        // tangent leaving the corner into s1.
+        let dot_product = FloatPointMath::dot_product(&s0.dir_b, &s1.dir_a);
         if self.limit_dot_product < dot_product {
             BevelJoinBuilder::join(s0, s1, adapter, segments);
             return;
@@ -212,7 +221,7 @@ impl<P: FloatPointCompatible> JoinBuilder<P> for RoundJoinBuilder<P::Scalar> {
         let start = s0.b_top;
         let end = s1.a_top;
 
-        let dir = P::from_xy(-s0.dir.y(), s0.dir.x());
+        let dir = P::from_xy(-s0.dir_b.y(), s0.dir_b.x());
 
         let rotator = Rotator::<P::Scalar>::with_angle(self.rot_dir * delta_angle);
 
