@@ -4,15 +4,13 @@ use crate::float::scale::FixedScaleOverlayError;
 use crate::float::string_overlay::FloatStringOverlay;
 use crate::string::clip::ClipRule;
 use i_float::float::compatible::FloatPointCompatible;
-use i_float::float::number::FloatNumber;
 use i_shape::base::data::Paths;
 use i_shape::source::resource::ShapeResource;
 
-pub trait FloatClip<R, P, T>
+pub trait FloatClip<R, P>
 where
-    R: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
-    T: FloatNumber,
+    R: ShapeResource<P>,
+    P: FloatPointCompatible,
 {
     /// Clips paths according to the specified build and clip rules.
     /// - `resource`: A clipping shape.
@@ -44,7 +42,7 @@ where
         source: &R,
         fill_rule: FillRule,
         clip_rule: ClipRule,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Paths<P>, FixedScaleOverlayError>;
 
     /// Clips paths according to the specified build and clip rules.
@@ -86,7 +84,7 @@ where
         fill_rule: FillRule,
         clip_rule: ClipRule,
         solver: Solver,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Paths<P>, FixedScaleOverlayError>;
 }
 
@@ -146,12 +144,11 @@ mod tests {
     }
 }
 
-impl<R0, R1, P, T> FloatClip<R0, P, T> for R1
+impl<R0, R1, P> FloatClip<R0, P> for R1
 where
-    R0: ShapeResource<P, T>,
-    R1: ShapeResource<P, T>,
-    P: FloatPointCompatible<T>,
-    T: FloatNumber,
+    R0: ShapeResource<P>,
+    R1: ShapeResource<P>,
+    P: FloatPointCompatible,
 {
     #[inline]
     fn clip_by(&self, resource: &R0, fill_rule: FillRule, clip_rule: ClipRule) -> Paths<P> {
@@ -176,7 +173,7 @@ where
         resource: &R0,
         fill_rule: FillRule,
         clip_rule: ClipRule,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Paths<P>, FixedScaleOverlayError> {
         self.clip_by_fixed_scale_with_solver(resource, fill_rule, clip_rule, Default::default(), scale)
     }
@@ -188,7 +185,7 @@ where
         fill_rule: FillRule,
         clip_rule: ClipRule,
         solver: Solver,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Paths<P>, FixedScaleOverlayError> {
         Ok(
             FloatStringOverlay::with_shape_and_string_fixed_scale(resource, self, scale)?

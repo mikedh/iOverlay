@@ -19,7 +19,7 @@ use i_shape::float::adapter::ShapesToFloat;
 use i_shape::float::despike::DeSpikeContour;
 use i_shape::float::simple::SimplifyContour;
 
-pub trait StrokeOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
+pub trait StrokeOffset<P: FloatPointCompatible> {
     /// Generates a stroke shapes for paths, contours, or shapes.
     ///
     /// - `style`: Defines the stroke properties, including width, line caps, and joins.
@@ -29,7 +29,7 @@ pub trait StrokeOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
     /// A collection of `Shapes<P>` representing the stroke geometry.
     ///
     /// Note: Outer boundary paths have a counterclockwise order, and holes have a clockwise order.
-    fn stroke(&self, style: StrokeStyle<P, T>, is_closed_path: bool) -> Shapes<P>;
+    fn stroke(&self, style: StrokeStyle<P>, is_closed_path: bool) -> Shapes<P>;
 
     /// Generates stroke contours directly into a flat buffer.
     ///
@@ -38,7 +38,7 @@ pub trait StrokeOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
     /// - `output`: Destination buffer that receives resulting contours. Existing contents are replaced.
     fn stroke_into(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
         output: &mut FloatFlatContoursBuffer<P>,
     );
@@ -55,9 +55,9 @@ pub trait StrokeOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
     /// Note: Outer boundary paths have a **main_direction** order, and holes have an opposite to **main_direction** order.
     fn stroke_custom(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
     ) -> Shapes<P>;
 
     /// Generates stroke contours directly into a flat buffer with custom overlay options.
@@ -68,9 +68,9 @@ pub trait StrokeOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
     /// - `output`: Destination buffer that receives resulting contours. Existing contents are replaced.
     fn stroke_custom_into(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         output: &mut FloatFlatContoursBuffer<P>,
     );
 
@@ -86,9 +86,9 @@ pub trait StrokeOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
     /// Note: Outer boundary paths have a counterclockwise order, and holes have a clockwise order.
     fn stroke_fixed_scale(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError>;
 
     /// Generates stroke contours directly into a flat buffer with a fixed float-to-integer scale.
@@ -99,9 +99,9 @@ pub trait StrokeOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
     /// - `output`: Destination buffer that receives resulting contours. Existing contents are replaced on success.
     fn stroke_fixed_scale_into(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        scale: T,
+        scale: P::Scalar,
         output: &mut FloatFlatContoursBuffer<P>,
     ) -> Result<(), FixedScaleOverlayError>;
 
@@ -118,10 +118,10 @@ pub trait StrokeOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
     /// Note: Outer boundary paths have a **main_direction** order, and holes have an opposite to **main_direction** order.
     fn stroke_custom_fixed_scale(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
-        scale: T,
+        options: OverlayOptions<P::Scalar>,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError>;
 
     /// Generates stroke contours directly into a flat buffer with custom options and fixed scaling.
@@ -133,27 +133,26 @@ pub trait StrokeOffset<P: FloatPointCompatible<T>, T: FloatNumber> {
     /// - `output`: Destination buffer that receives resulting contours. Existing contents are replaced on success.
     fn stroke_custom_fixed_scale_into(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
-        scale: T,
+        options: OverlayOptions<P::Scalar>,
+        scale: P::Scalar,
         output: &mut FloatFlatContoursBuffer<P>,
     ) -> Result<(), FixedScaleOverlayError>;
 }
 
-impl<S, P, T> StrokeOffset<P, T> for S
+impl<S, P> StrokeOffset<P> for S
 where
-    S: ShapeResource<P, T>,
-    P: FloatPointCompatible<T> + 'static,
-    T: FloatNumber + 'static,
+    S: ShapeResource<P>,
+    P: FloatPointCompatible + 'static,
 {
-    fn stroke(&self, style: StrokeStyle<P, T>, is_closed_path: bool) -> Shapes<P> {
+    fn stroke(&self, style: StrokeStyle<P>, is_closed_path: bool) -> Shapes<P> {
         self.stroke_custom(style, is_closed_path, Default::default())
     }
 
     fn stroke_into(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
         output: &mut FloatFlatContoursBuffer<P>,
     ) {
@@ -162,18 +161,18 @@ where
 
     fn stroke_fixed_scale(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        scale: T,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError> {
         self.stroke_custom_fixed_scale(style, is_closed_path, Default::default(), scale)
     }
 
     fn stroke_fixed_scale_into(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        scale: T,
+        scale: P::Scalar,
         output: &mut FloatFlatContoursBuffer<P>,
     ) -> Result<(), FixedScaleOverlayError> {
         self.stroke_custom_fixed_scale_into(style, is_closed_path, Default::default(), scale, output)
@@ -181,9 +180,9 @@ where
 
     fn stroke_custom(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
     ) -> Shapes<P> {
         match StrokeSolver::prepare(self, style) {
             Some(solver) => solver.build(self, is_closed_path, options),
@@ -193,9 +192,9 @@ where
 
     fn stroke_custom_into(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         output: &mut FloatFlatContoursBuffer<P>,
     ) {
         match StrokeSolver::prepare(self, style) {
@@ -206,10 +205,10 @@ where
 
     fn stroke_custom_fixed_scale(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
-        scale: T,
+        options: OverlayOptions<P::Scalar>,
+        scale: P::Scalar,
     ) -> Result<Shapes<P>, FixedScaleOverlayError> {
         let mut solver = match StrokeSolver::prepare(self, style) {
             Some(solver) => solver,
@@ -221,10 +220,10 @@ where
 
     fn stroke_custom_fixed_scale_into(
         &self,
-        style: StrokeStyle<P, T>,
+        style: StrokeStyle<P>,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
-        scale: T,
+        options: OverlayOptions<P::Scalar>,
+        scale: P::Scalar,
         output: &mut FloatFlatContoursBuffer<P>,
     ) -> Result<(), FixedScaleOverlayError> {
         let mut solver = match StrokeSolver::prepare(self, style) {
@@ -240,16 +239,16 @@ where
     }
 }
 
-struct StrokeSolver<P: FloatPointCompatible<T>, T: FloatNumber> {
-    r: T,
-    builder: StrokeBuilder<P, T>,
-    adapter: FloatPointAdapter<P, T>,
+struct StrokeSolver<P: FloatPointCompatible> {
+    r: P::Scalar,
+    builder: StrokeBuilder<P>,
+    adapter: FloatPointAdapter<P>,
     paths_count: usize,
     points_count: usize,
 }
 
-impl<P: 'static + FloatPointCompatible<T>, T: 'static + FloatNumber> StrokeSolver<P, T> {
-    fn prepare<S: ShapeResource<P, T>>(source: &S, style: StrokeStyle<P, T>) -> Option<Self> {
+impl<P: 'static + FloatPointCompatible> StrokeSolver<P> {
+    fn prepare<S: ShapeResource<P>>(source: &S, style: StrokeStyle<P>) -> Option<Self> {
         let mut paths_count = 0;
         let mut points_count = 0;
         for path in source.iter_paths() {
@@ -261,7 +260,7 @@ impl<P: 'static + FloatPointCompatible<T>, T: 'static + FloatNumber> StrokeSolve
             return None;
         }
 
-        let r = T::from_float(0.5 * style.width.to_f64());
+        let r = P::Scalar::from_float(0.5 * style.width.to_f64());
         let builder = StrokeBuilder::new(style);
         let a = builder.additional_offset(r);
 
@@ -278,23 +277,23 @@ impl<P: 'static + FloatPointCompatible<T>, T: 'static + FloatNumber> StrokeSolve
         })
     }
 
-    fn apply_scale(&mut self, scale: T) -> Result<(), FixedScaleOverlayError> {
+    fn apply_scale(&mut self, scale: P::Scalar) -> Result<(), FixedScaleOverlayError> {
         let s = FixedScaleOverlayError::validate_scale(scale)?;
         if self.adapter.dir_scale < scale {
             return Err(FixedScaleOverlayError::ScaleTooLarge);
         }
 
         self.adapter.dir_scale = scale;
-        self.adapter.inv_scale = T::from_float(1.0 / s);
+        self.adapter.inv_scale = P::Scalar::from_float(1.0 / s);
 
         Ok(())
     }
 
-    fn build<S: ShapeResource<P, T>>(
+    fn build<S: ShapeResource<P>>(
         self,
         source: &S,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
     ) -> Shapes<P> {
         let ir = self.adapter.len_float_to_int(self.r).abs();
         if ir <= 1 {
@@ -330,11 +329,11 @@ impl<P: 'static + FloatPointCompatible<T>, T: 'static + FloatNumber> StrokeSolve
         float
     }
 
-    fn build_into<S: ShapeResource<P, T>>(
+    fn build_into<S: ShapeResource<P>>(
         self,
         source: &S,
         is_closed_path: bool,
-        options: OverlayOptions<T>,
+        options: OverlayOptions<P::Scalar>,
         output: &mut FloatFlatContoursBuffer<P>,
     ) {
         let ir = self.adapter.len_float_to_int(self.r).abs();

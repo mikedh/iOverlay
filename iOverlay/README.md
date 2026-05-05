@@ -77,9 +77,9 @@ See the detailed report: [Performance Comparison](https://ishape-rust.github.io/
 ## Getting Started
 
 Add the following to your Cargo.toml:
-```
+```toml
 [dependencies]
-i_overlay = "^4.0"
+i_overlay = "^6.0"
 ```
 
 Read full [documentation](https://ishape-rust.github.io/iShape-js/overlay/doc.html)
@@ -145,7 +145,7 @@ println!("result: {:?}", result);
 &nbsp;
 
 The result is a vec of shapes:
-```rust
+```text
 [
     // first shape
     [
@@ -239,11 +239,10 @@ let result = square.intersects_with_fixed_scale(&other, scale);
 assert!(result.unwrap());
 ```
 
-For more control, use `FloatPredicateOverlay` directly with a custom adapter:
+For more control, use `FloatPredicateOverlay` directly:
 
 ```rust
 use i_overlay::float::relate::FloatPredicateOverlay;
-use i_float::adapter::FloatPointAdapter;
 
 let square = vec![[0.0, 0.0], [0.0, 10.0], [10.0, 10.0], [10.0, 0.0]];
 let clip = vec![[5.0, 5.0], [5.0, 15.0], [15.0, 15.0], [15.0, 5.0]];
@@ -271,7 +270,9 @@ struct CustomPoint {
   y: f32,
 }
 
-impl FloatPointCompatible<f32> for CustomPoint {
+impl FloatPointCompatible for CustomPoint {
+  type Scalar = f32;
+
   fn from_xy(x: f32, y: f32) -> Self {
     Self { x, y }
   }
@@ -466,13 +467,20 @@ println!("shapes: {:?}", &shapes);
 
 - Use **`FloatOverlay`** when you perform **repeated overlay operations**:
   ```rust
-  let mut overlay = FloatOverlay::new();
-  loop {
-      overlay.clear();
-      overlay.add_source(shape);
-      let result = overlay.overlay(overlay_rule, fill_rule);
-      // ...
-  }
+  use i_overlay::core::fill_rule::FillRule;
+  use i_overlay::core::overlay_rule::OverlayRule;
+  use i_overlay::float::overlay::FloatOverlay;
+
+  let subj = vec![[0.0, 0.0], [0.0, 5.0], [5.0, 5.0], [5.0, 0.0]];
+  let clip = vec![[2.0, 2.0], [2.0, 4.0], [4.0, 4.0], [4.0, 2.0]];
+  let next_clip = vec![[1.0, 1.0], [1.0, 3.0], [3.0, 3.0], [3.0, 1.0]];
+
+  let mut overlay = FloatOverlay::with_subj_and_clip(&subj, &clip);
+  let result = overlay.overlay(OverlayRule::Difference, FillRule::EvenOdd);
+
+  overlay.reinit_with_subj_and_clip(&subj, &next_clip);
+  let next_result = overlay.overlay(OverlayRule::Difference, FillRule::EvenOdd);
+  // ...
   ```
 
 - Use **`SingleFloatOverlay`** trait for **one-shot operations**.
@@ -483,10 +491,18 @@ println!("shapes: {:?}", &shapes);
 
 ### 2. I need to union many shapes at once. What's the most efficient way?
 
-Use the [`simplify`](https://github.com/iShape-Rust/iOverlay/blob/main/iOverlay/src/float/simplify.rs) operation:
+Use the [`simplify_shape`](https://github.com/iShape-Rust/iOverlay/blob/main/iOverlay/src/float/simplify.rs) operation:
 
 ```rust
-let result = shapes.simplify(fill_rule);
+use i_overlay::core::fill_rule::FillRule;
+use i_overlay::float::simplify::SimplifyShape;
+
+let shapes = vec![
+    vec![[0.0, 0.0], [0.0, 2.0], [2.0, 2.0], [2.0, 0.0]],
+    vec![[2.0, 0.0], [2.0, 2.0], [4.0, 2.0], [4.0, 0.0]],
+];
+
+let result = shapes.simplify_shape(FillRule::EvenOdd);
 ```
 
 It internally merges shapes efficiently and is typically faster and more robust than chaining many `overlay()` calls manually.
