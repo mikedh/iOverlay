@@ -109,6 +109,22 @@ pub(crate) trait JoinHoles {
     fn join_unsorted_holes(&mut self, holes: Vec<IntContour>, clockwise: bool);
     fn join_sorted_holes(&mut self, holes: Vec<IntContour>, anchors: Vec<IdSegment>, clockwise: bool);
     fn scan_join(&mut self, holes: Vec<IntPath>, hole_segments: Vec<IdSegment>, clockwise: bool);
+
+    /// Same as [`Self::join_sorted_holes`] but ALSO returns the
+    /// `hole_index → shape_index` mapping, so callers that maintain
+    /// parallel per-hole metadata (e.g. tag arrays) can reorder it
+    /// to match the spatial binding `scan_join` actually applied.
+    ///
+    /// Returns `None` when there are no holes (no mapping needed),
+    /// `Some(mapping)` where `mapping[hole_index]` is the shape that
+    /// received that hole. For the `self.len() == 1` early-return,
+    /// the mapping is `[0; holes.len()]`.
+    fn join_sorted_holes_with_mapping(
+        &mut self,
+        holes: Vec<IntContour>,
+        anchors: Vec<IdSegment>,
+        clockwise: bool,
+    ) -> Option<Vec<usize>>;
 }
 
 impl JoinHoles for Vec<IntShape> {
@@ -141,23 +157,62 @@ impl JoinHoles for Vec<IntShape> {
 
     #[inline]
     fn join_sorted_holes(&mut self, holes: Vec<IntContour>, anchors: Vec<IdSegment>, clockwise: bool) {
+        // Single source of truth: the binding logic lives only in
+        // `join_sorted_holes_with_mapping`. The untagged path simply
+        // discards the hole→shape mapping. This structurally
+        // guarantees the two methods bind holes to identical shapes
+        // (the property `extract.rs` relies on when it swapped its
+        // production call to the `_with_mapping` variant).
+        let _ = self.join_sorted_holes_with_mapping(holes, anchors, clockwise);
+    }
+
+    fn scan_join(&mut self, holes: Vec<IntPath>, hole_segments: Vec<IdSegment>, clockwise: bool) {
+        let _ = self.scan_join_with_mapping(holes, hole_segments, clockwise);
+    }
+
+    fn join_sorted_holes_with_mapping(
+        &mut self,
+        holes: Vec<IntContour>,
+        anchors: Vec<IdSegment>,
+        clockwise: bool,
+    ) -> Option<Vec<usize>> {
         if self.is_empty() || holes.is_empty() {
-            return;
+            return None;
         }
 
         if self.len() == 1 {
+            let n = holes.len();
             let mut hole_paths = holes;
             self[0].append(&mut hole_paths);
-            return;
+            return Some(alloc::vec![0; n]);
         }
         debug_assert!(is_sorted(&anchors));
 
         let mut anchors = anchors;
         anchors.add_sort_by_angle();
-        self.scan_join(holes, anchors, clockwise);
+        Some(self.scan_join_with_mapping(holes, anchors, clockwise))
     }
+}
 
-    fn scan_join(&mut self, holes: Vec<IntPath>, hole_segments: Vec<IdSegment>, clockwise: bool) {
+/// Helper trait, parallel to [`JoinHoles`], for the mapping-returning
+/// variant of `scan_join`. Kept private so external callers go
+/// through the named methods on [`JoinHoles`].
+trait JoinHolesInternal {
+    fn scan_join_with_mapping(
+        &mut self,
+        holes: Vec<IntPath>,
+        hole_segments: Vec<IdSegment>,
+        clockwise: bool,
+    ) -> Vec<usize>;
+}
+
+impl JoinHolesInternal for Vec<IntShape> {
+    fn scan_join_with_mapping(
+        &mut self,
+        holes: Vec<IntPath>,
+        hole_segments: Vec<IdSegment>,
+        clockwise: bool,
+    ) -> Vec<usize> {
         let x_min = hole_segments[0].v_segment.a.x;
         let x_max = hole_segments[hole_segments.len() - 1].v_segment.a.x;
 
@@ -179,10 +234,14 @@ impl JoinHoles for Vec<IntShape> {
             self[shape_index].reserve(capacity);
         }
 
+        // `parent_for_child` is owned by `solution`; move it out
+        // instead of cloning. The push loop indexes it and we return
+        // it as the hole→shape mapping — no extra allocation.
+        let parent_for_child = solution.parent_for_child;
         for (hole_index, hole) in holes.into_iter().enumerate() {
-            let shape_index = solution.parent_for_child[hole_index];
-            self[shape_index].push(hole);
+            self[parent_for_child[hole_index]].push(hole);
         }
+        parent_for_child
     }
 }
 
